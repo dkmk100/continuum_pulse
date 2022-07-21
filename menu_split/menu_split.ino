@@ -12,8 +12,10 @@ const unsigned char speaker = A0;
 const unsigned char tempSensor = A3;
 
 const unsigned char backPin = A2;
-const unsigned char selectPin = A7;
-const unsigned char advancePin = A6;
+const unsigned char advancePin = A7;
+const unsigned char selectPin = A6;
+const unsigned char motor = A1;
+
 
 #define builtinMode false
 
@@ -311,13 +313,13 @@ boolean getSelectButton(){
 }
 #else
 boolean getBackButton(){
-  return digitalRead(backPin);
+  return !digitalRead(backPin);
 }
 boolean getAdvanceButton(){
-  return digitalRead(advancePin);
+  return !digitalRead(advancePin);
 }
 boolean getSelectButton(){
-  return digitalRead(selectPin);
+  return !digitalRead(selectPin);
 }
 #endif
 SliderSetting* stepSize = new SliderSetting(20,30,21);
@@ -406,6 +408,7 @@ struct ClearTimerItem : public MenuItem{
     //nothing to do here
   }
 };
+
 struct JogItem : public MenuItem{
   void activate() override{
     if(joggingMode){
@@ -502,15 +505,30 @@ ToggleSetting* doTempReminders = new ToggleSetting(true);
 ToggleSetting* daylightSavings = new ToggleSetting(isDaylightSavings);
 
 SliderSetting* waterDelay = new SliderSetting(1,12,5);
+SliderSetting* tempLevel = new SliderSetting(15,30,22);
 //step size is above because steps screen
 
-SliderScreen* waterScreen = new SliderScreen(screenManager, waterDelay);// String("water reminder frequency")
-SliderScreen* stepScreen = new SliderScreen(screenManager, stepSize);// String("water reminder frequency")
+SliderScreen* waterScreen = new SliderScreen(screenManager, waterDelay);
+SliderScreen* stepScreen = new SliderScreen(screenManager, stepSize);
+SliderScreen* tempLevelScreen = new SliderScreen(screenManager, tempLevel);
 
 void setup() {
   //basic setup
   Serial.begin(115200);
   CircuitPlayground.begin();
+  pinMode(tempSensor,INPUT);
+  pinMode(motor,OUTPUT);
+
+  #if !builtinMode
+  pinMode(backPin,INPUT);
+  pinMode(advancePin,INPUT);
+  pinMode(selectPin,INPUT);
+  
+  digitalWrite(backPin,HIGH);
+  digitalWrite(advancePin,HIGH);
+  digitalWrite(selectPin,HIGH);
+  #endif
+  
   delay(500);
   oled_display->setup();
 
@@ -532,6 +550,7 @@ void setup() {
   BoolMenuItem* waterSetting = new BoolMenuItem(&screenManager, doWaterReminders, String("water remind"));
   BoolMenuItem* tempSetting = new BoolMenuItem(&screenManager, doTempReminders, String("temp alerts"));
   SliderMenuItem* waterDelaySetting = new SliderMenuItem(&screenManager, waterScreen, String("water delay"));
+  SliderMenuItem* tempLevelSetting = new SliderMenuItem(&screenManager, tempLevelScreen, String("temp threshold"));
   NavItem* setClockDest = new NavItem(&screenManager, clockSetScreen, String("set clock"));
   //recently split to 2 menus
   clockSettings->addMenuItem(twelveHourSetting);
@@ -541,6 +560,8 @@ void setup() {
   sensorSettings->addMenuItem(waterSetting);
   sensorSettings->addMenuItem(waterDelaySetting);
   sensorSettings->addMenuItem(tempSetting);
+  sensorSettings->addMenuItem(tempLevelSetting);
+
 
   CalibrateMenuItem* calibrateItem = new CalibrateMenuItem(&screenManager, String("calibrate"));
   SliderMenuItem* stepSizeSetting = new SliderMenuItem(&screenManager, stepScreen, String("step size"));
@@ -558,7 +579,10 @@ void setup() {
   
   NavItem* timerDest = new NavItem(&screenManager, timerScreen, String("timer"));
   JogItem* jogItem = new JogItem(&screenManager, String("jog"));
+  ClearTimerItem* resetTimer = new ClearTimerItem(&screenManager, String("reset_timer"));
+  
   utilScreen->addMenuItem(timerDest);
+  utilScreen->addMenuItem(resetTimer);
   utilScreen->addMenuItem(jogItem);
 
   clockScreen->setNav(basicNavScreen);
@@ -592,11 +616,13 @@ void doCalibration(){
   //for this time, add data to all our sums so we can find averages. That's... the entire point of calibration...
   aSum = 0.0;
   tSum = 0;
+  
   for (int i=1; i<=nave; i++ ) {
     aSum += accelSmooth(0.5,DEBUG_PRINT);
     tSum += analogRead(tempSensor);
-    delay(baseDelay);
+    //delay(baseDelay);
   }
+  
   
   aOffset = aSum / float(nave);//actual float, so float division is obv necessary
   baseTemp = tSum / float(nave);//do float division to include partial parts, then auto-cast to int which kills decimal point. Close enough.
@@ -628,8 +654,8 @@ void loop() {
   const float timeToTempAlert = 3 * 1000/delayDur;
   static int ticksHot = 0; 
   static int ticksCold = 0;
-  const int hotLevel = 70;
-  const int coldLevel = 22;
+  int hotLevel = tempLevel->get();
+  int coldLevel = tempLevel->get();
   int tempRead = analogRead(tempSensor);
   
   float aStepThreshold = 1.1;
@@ -668,7 +694,7 @@ void loop() {
     displayAlert("timer!");
     hasTimer = false;
   }
-  Serial.println(doTempReminders->get());
+  Serial.println(tempRead);
   if(tempRead > baseTemp + hotLevel && doTempReminders->get()){
     ticksHot++;
     ticksCold = 0;
@@ -764,6 +790,9 @@ void doWaterReminder(){
 }
 
 void displayAlert(char* alert){
+  //activate vibro motor
+  //here for now, not enough time to put elsewhere
+  digitalWrite(motor,HIGH);
   screenManager.getDisplay().displayText(2,alert);
   bool awoke = false;
   while(!awoke){
@@ -773,6 +802,7 @@ void displayAlert(char* alert){
     }
     delay(100);
   }
+  digitalWrite(motor,LOW);
 }
 
 //calculates the milliseconds from a time
@@ -984,5 +1014,5 @@ void makeTone (unsigned char speakerPin, int frequencyInHertz, long timeInMillis
      delayMicroseconds(delayAmount);  // and make the tall part of the wave
      digitalWrite(speakerPin,LOW);    // switch the pin back to low
      delayMicroseconds(delayAmount);  // and make the bottom part of the wave
-  }  
+  }
 }
