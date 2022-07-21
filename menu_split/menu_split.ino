@@ -10,13 +10,12 @@
 
 const unsigned char speaker = A0;
 const unsigned char tempSensor = A3;
-/*
-const unsigned char backPin = A;
-const unsigned char selectPin = A3;
-const unsigned char advancePin = A3;
-*/
 
-#define builtinMode true
+const unsigned char backPin = A2;
+const unsigned char selectPin = A7;
+const unsigned char advancePin = A6;
+
+#define builtinMode false
 
 OLED_Display* oled_display = new OLED_Display();
 MenuManager screenManager(oled_display);
