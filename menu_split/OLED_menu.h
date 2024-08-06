@@ -4,31 +4,40 @@
 #ifndef OLED_MENU_hpp
 #define OLED_MENU_hpp
 
+#define OLED_RESET -1
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT  64
+//#define USE_SSD1306
+#define USE_SH1106
+
 #include "menu.h"
 #include <Adafruit_GFX.h>       //  Generic graphics library: fonts, lines, effects
-#include <Adafruit_SSD1306.h>   //  Library for the micro OLED display
 
-#define OLED_RESET -1  // Reset pin # (or -1 if sharing Arduino reset pin)
-#define SCREEN_WIDTH 128  // OLED display width in pixels
-#define SCREEN_HEIGHT  64  // OLED display height in pixels
-#define I2CADDR  0x3D      // I2C address is used in setupOLED()
+#ifdef USE_SSD1306
+#include <Adafruit_SSD1306.h>
+#define I2CADDR  0x3D
+#define OLED_CLASS Adafruit_SSD1306
+#define OLED_WHITE SSD1306_WHITE
+#endif
+#ifdef USE_SH1106
+#include <Adafruit_SH110X.h>
+#define I2CADDR  0x3C
+#define OLED_CLASS Adafruit_SH1106G
+#define OLED_WHITE SH110X_WHITE
+#endif
+
 
 class OLED_Display : public Display{
   protected:
-  Adafruit_SSD1306* OLED;
-  void setupOLED();
+  OLED_CLASS OLED = OLED_CLASS(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+  void setupOLED(int addr);
   public:
   OLED_Display(){
-    OLED = new Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+    
   }
   void setup(){
-    setupOLED();
+    setupOLED(I2CADDR);
   }
-  /*
-  ~OLED_Display(){
-    delete OLED;
-  }
-  */
   
   void setCursor(int x, int y) override;
   void printText(int textSize, char *message) override;
@@ -41,8 +50,8 @@ class OLED_Display : public Display{
   void printCircle(int x, int y, int r) override;
   void clear() override;
   void display() override;
-  Adafruit_SSD1306& getOled(){
-    return *OLED;
+  OLED_CLASS& getOled(){
+    return OLED;
   }
 };
 

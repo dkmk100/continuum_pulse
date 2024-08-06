@@ -165,8 +165,8 @@ private:
   Display* display;
 public:
   MenuManager(Display* disp){
-    stack = new MenuScreen*[maxStack];
     maxStack = 10;
+    stack = new MenuScreen*[maxStack];
     count = 0;
     display = disp;
   }
@@ -177,9 +177,10 @@ public:
     return DisplayWrapper(display);
   }
   void setScreen(MenuScreen* screen){
+    Serial.println("Setting screen");
     if(count >= maxStack){
       display->clear();
-      Serial.print("ERROR:: STACK LIMIT REACHED");
+      Serial.println("ERROR:: STACK LIMIT REACHED");
       display->setCursor(0,24);
       display->printText(2,"STACK ERROR");
       display->display();
@@ -192,6 +193,7 @@ public:
   }
   //displays the current screen on the stack
   void displayScreen(){
+    Serial.println("displaying screen");
     MenuScreen* screen = stack[count-1];
     screen->displayScreen();
   }
