@@ -7,25 +7,40 @@
 #include "OLED_menu.h"
 #include "pedometer.h"
 
-const bool DEBUG_PRINT = true;
+#define DEBUG_PRINT true
+#define VERBOSE_DEBUG_DISPLAY false
+#define VERBOSE_DEBUG_BUTTONS false
+#define VERBOSE_DEBUG_ACCEL false
 
-const bool BUTTONS_PULLUP = true;
-const bool HAS_TEMP_SENSOR = false;
-const bool HAS_SPEAKER = false;
-const bool HAS_MOTOR = false;
-const bool HAS_ACCEL = false;
+#define WAIT_FOR_SERIAL true
+
+#define BUTTONS_PULLUP true
+#define HAS_TEMP_SENSOR false
+#define HAS_SPEAKER false
+#define HAS_MOTOR false
+#define HAS_ACCEL false
+
+#define USE_CPX false
+#define USE_RP2040 true
+
 #define builtinMode true
+
+const unsigned int clockDelay = 15;
 
 //const unsigned char backPin = A2;
 //const unsigned char advancePin = A7;
 //const unsigned char selectPin = A6;
 
-const unsigned char selectPin = 13;
-const unsigned char advancePin = 14;
+const unsigned char advancePin = 13;
+const unsigned char selectPin = 14;
 
 //const unsigned char motor = A1;
-//const unsigned char speaker = A0;
+const unsigned char speaker = A0;
 //const unsigned char tempSensor = A3;
+
+#if USE_CPX
+#include <Adafruit_CircuitPlayground.h>
+#endif
 
 int getTemp() {
 #if HAS_TEMP_SENSOR
@@ -53,13 +68,13 @@ void playTone(int freq, int dur) {
 
 void readAccel(float& ax, float& ay, float& az) {
 #if HAS_ACCEL
-  ax = CircuitPlayground.accelerationX();
-  ay = CircuitPlayground.accelerationY();
-  az = CircuitPlayground.accelerationZ();
+  ax = CircuitPlayground.motionX();
+  ay = CircuitPlayground.motionY();
+  az = CircuitPlayground.motionZ();
 #else
   ax = 0;
   ay = 0;
-  az = 0;
+  az = 9.8;
 #endif
 }
 
@@ -68,10 +83,6 @@ OLED_Display actual_display;
 OLED_Display* oled_display = &actual_display;
 MenuManager screenManager(oled_display);
 OLED_CLASS& OLED = oled_display->getOled();
-
-//-----------------------------------------------------------------------------------------------------------------------------------------------------------
-//change this based on when you are compiling, it sets the default value of the DST setting.
-const bool isDaylightSavings = false;
 
 //declare everything used in custom menu types
 void displayClock();
@@ -95,7 +106,6 @@ unsigned long timerTime = 0;
 bool hasTimer = false;
 
 bool isTwelveHour();
-bool isDaylight();
 
 unsigned long timeToMilli(int hours, int minutes, int seconds);
 void milliToTime(unsigned long mili, int& hours, int& minutes, int& seconds);
@@ -105,7 +115,7 @@ void printClock(int hours, int minutes, int seconds, int mil, bool twelveHour);
 //not perfectly accurate but we don't care anyway lol
 //used by clocks and stuff
 //not constant because clock configuration changes it...
-unsigned long startTime = timeToMilli(BUILD_HOUR + (isDaylightSavings ? -1 : 0), BUILD_MIN, BUILD_SEC + 30);
+unsigned long startTime = timeToMilli(BUILD_HOUR, BUILD_MIN, BUILD_SEC + clockDelay);
 
 struct TimerScreen : public MenuScreen {
   int selected = 0;
@@ -120,7 +130,7 @@ struct TimerScreen : public MenuScreen {
     int dispHours = hours;
     OLED.clearDisplay();
     printClock(hours, minutes, seconds, mil, false);
-    OLED.fillRect(21 + 37 * selected, 45, 4, 7, OLED_WHITE);
+    OLED.fillRect(21 + 37 * selected, 45, 6, 10, OLED_WHITE);
     OLED.display();
   }
   bool customBack() override {
@@ -201,9 +211,6 @@ struct ClockConfigScreen : public MenuScreen {
   void showClock(int mil) {
     int dispHours = hours;
     bool twelveHour = isTwelveHour();
-    if (isDaylight()) {
-      dispHours += 1;
-    }
     OLED.clearDisplay();
     printClock(dispHours, minutes, seconds, mil, twelveHour);
     OLED.fillRect((twelveHour ? 11 : 21) + 37 * selected, 45, 4, 7, OLED_WHITE);
@@ -321,9 +328,7 @@ struct ClockMenuScreen : public MenuScreen {
   MenuScreen* hiddenNav = NULL;
   void displayScreen() override {
     if (!sleepMode) {
-      Serial.println(F("displaying clock"));
       displayClock();
-      Serial.println(F("displayed clock"));
     }
   }
 
@@ -355,12 +360,18 @@ bool getBackButton() {
   return false;
 }
 bool getAdvanceButton() {
-  //return CircuitPlayground.rightButton();
+  #if USE_CPX
+  return CircuitPlayground.rightButton();
+  #else
   return !digitalRead(advancePin);
+  #endif
 }
 bool getSelectButton() {
-  //return CircuitPlayground.leftButton();
+  #if USE_CPX
+  return CircuitPlayground.leftButton();
+  #else
   return !digitalRead(selectPin);
+  #endif
 }
 #else
 bool getBackButton() {
@@ -558,7 +569,7 @@ TimerScreen* timerScreen = new TimerScreen(screenManager);
 ToggleSetting* twelveHourTime = new ToggleSetting(true);
 ToggleSetting* doWaterReminders = new ToggleSetting(true);
 ToggleSetting* doTempReminders = new ToggleSetting(true);
-ToggleSetting* daylightSavings = new ToggleSetting(isDaylightSavings);
+ToggleSetting* roundClock = new ToggleSetting(false);
 
 SliderSetting* waterDelay = new SliderSetting(1, 12, 5);
 SliderSetting* tempLevel = new SliderSetting(15, 30, 22);
@@ -569,14 +580,22 @@ SliderScreen* stepScreen = new SliderScreen(screenManager, stepSize);
 SliderScreen* tempLevelScreen = new SliderScreen(screenManager, tempLevel);
 
 void setup() {
-  //basic setup
   Serial.begin(115200);
-  //CircuitPlayground.begin();
+  if(WAIT_FOR_SERIAL){
+    while(!Serial){
+      delay(10);
+    }
+  }
+  #if USE_CPX
+  CircuitPlayground.begin();
+  #endif
+  #if HAS_SPEAKER
+  pinMode(speaker, OUTPUT);
+  #endif
 //pinMode(tempSensor,INPUT);
 //pinMode(motor,OUTPUT);
 
-//HACK: only for pico
-#if builtinMode
+#if builtinMode && !USE_CPX
   pinMode(advancePin, INPUT_PULLUP);
   pinMode(selectPin, INPUT_PULLUP);
 #endif
@@ -608,15 +627,18 @@ void setup() {
   basicNavScreen->addMenuItem(settingsDest2);
 
   BoolMenuItem* twelveHourSetting = new BoolMenuItem(&screenManager, twelveHourTime, String("12h time"));
-  BoolMenuItem* daySavingSetting = new BoolMenuItem(&screenManager, daylightSavings, String("DST"));
   BoolMenuItem* waterSetting = new BoolMenuItem(&screenManager, doWaterReminders, String("water remind"));
   BoolMenuItem* tempSetting = new BoolMenuItem(&screenManager, doTempReminders, String("temp alerts"));
   SliderMenuItem* waterDelaySetting = new SliderMenuItem(&screenManager, waterScreen, String("water delay"));
   SliderMenuItem* tempLevelSetting = new SliderMenuItem(&screenManager, tempLevelScreen, String("temp threshold"));
+
+
   NavItem* setClockDest = new NavItem(&screenManager, clockSetScreen, String("set clock"));
+  BoolMenuItem* roundClockSetting = new BoolMenuItem(&screenManager, roundClock, String("round face"));
+
   //recently split to 2 menus
   clockSettings->addMenuItem(twelveHourSetting);
-  clockSettings->addMenuItem(daySavingSetting);
+  clockSettings->addMenuItem(roundClockSetting);
   clockSettings->addMenuItem(setClockDest);
 
   sensorSettings->addMenuItem(waterSetting);
@@ -693,7 +715,7 @@ void doCalibration() {
     readAccel(ax, ay, az);
     aSum += accelSmooth(0.5, DEBUG_PRINT, ax, ay, az);
     tSum += getTemp();
-    //delay(baseDelay);
+    delay(baseDelay);
   }
 
 
@@ -706,9 +728,6 @@ void doCalibration() {
 
 bool isTwelveHour() {
   return twelveHourTime->get();
-}
-bool isDaylight() {
-  return daylightSavings->get();
 }
 
 int getWaterDelay() {
@@ -770,7 +789,6 @@ void loop() {
     displayAlert("timer!");
     hasTimer = false;
   }
-  Serial.println(tempRead);
   if (tempRead > baseTemp + hotLevel && doTempReminders->get()) {
     ticksHot++;
     ticksCold = 0;
@@ -798,13 +816,13 @@ void loop() {
   //count steps
   float tNow = float(millis() - tStart) / 1000.0;  //  Time in seconds since the start
   if (tNow > lastCount + countTime) {
-    float a = accelSmooth(0.6, DEBUG_PRINT, ax, ay, az) - aOffset;  //  Total acceleration relative to stationary
+    float a = accelSmooth(0.6, false, ax, ay, az) - aOffset;  //  Total acceleration relative to stationary
     nSteps += count_step(a, aStepThreshold);                        //  Add to step count if a step was detected
     lastCount = tNow;                                               //continue counting steps
   }
 
   if (sleepMode) {
-    float sleepA = awakeSmooth(1.0, DEBUG_PRINT, ax, ay, az) - aOffset;  //  Total acceleration relative to stationary
+    float sleepA = awakeSmooth(1.0, false, ax, ay, az) - aOffset;  //  Total acceleration relative to stationary
 
     if (sleepA > 9.0 && millis() > lastMove + timeTillSleep * 1000 + 2000) {
       lastMove = millis();
@@ -815,7 +833,7 @@ void loop() {
       sleepMode = false;
     }
   } else {
-    float sleepA = awakeSmooth(1.0, DEBUG_PRINT, ax, ay, az) - aOffset;  //  Total acceleration relative to stationary
+    float sleepA = awakeSmooth(1.0, DEBUG_PRINT && VERBOSE_DEBUG_ACCEL, ax, ay, az) - aOffset;  //  Total acceleration relative to stationary
     if (sleepA > 9.0) {
       lastMove = millis();
       sleepMode = false;
@@ -845,14 +863,14 @@ void loop() {
 
     //the screen manager
 
-    if (DEBUG_PRINT) {
+    if (DEBUG_PRINT && VERBOSE_DEBUG_DISPLAY) {
       delay(5);
       Serial.println("Going to display screen");
     }
 
     screenManager.displayScreen();
 
-    if (DEBUG_PRINT) {
+    if (DEBUG_PRINT && VERBOSE_DEBUG_DISPLAY) {
       delay(5);
       Serial.println("Displayed screen");
     }
@@ -874,14 +892,12 @@ void doWaterReminder() {
   displayAlert("Drink water!");
 }
 
-void displayAlert(char* alert) {
-  //activate vibro motor
-  //here for now, not enough time to put elsewhere
+void displayAlert(String alert) {
   setMotor(true);
   screenManager.getDisplay().displayText(2, alert);
   bool awoke = false;
   while (!awoke) {
-    playTone(150, 25);
+    playTone(650, 25);
     if (getBackButton() || getAdvanceButton() || getSelectButton()) {
       awoke = true;
     }
@@ -916,33 +932,37 @@ void milliToTime(unsigned long mili, int& hours, int& minutes, int& seconds) {
 
 //quick display shortcut to use the correct settings
 void displayClock() {
-  displayClock(twelveHourTime->active);
+  displayClock(twelveHourTime->active, roundClock->get());
 }
 
 //displays the clock using calculated time.
-void displayClock(bool twelveHour) {
+void displayClock(bool twelveHour, bool roundFace) {
   unsigned long mil = millis();
   unsigned long ourTime = startTime + mil;
   int hours = 0;
   int minutes = 0;
   int seconds = 0;
 
-  Serial.println("calculating time");
+  //Serial.println("calculating time");
 
   milliToTime(ourTime, hours, minutes, seconds);
 
-  if (daylightSavings->get()) {
-    hours += 1;
-  }
-
-  Serial.println("printing clock");
+  //Serial.println("printing clock");
 
   OLED.clearDisplay();
-  printClock(hours, minutes, seconds, mil, twelveHour);
-  Serial.println("displaying to screen");
+
+  if(roundFace){
+    printClockFace(hours, minutes, seconds);
+  }
+  else{
+    printClock(hours, minutes, seconds, mil, twelveHour);
+  }
+  
+  
+
   OLED.display();
 
-  Serial.println("printed clock");
+  //Serial.println("printed clock");
 }
 
 //displays a clock with correct formatting options
@@ -988,6 +1008,66 @@ void printClock(int hours, int minutes, int seconds, int mil, bool twelveHour) {
     }
   }
   OLED.setTextSize(1);
+}
+
+void printClockFace(int hours, int minutes, int seconds){
+  bool pm = hours >= 12;
+  hours = hours % 12;
+
+  float angle1 = TWO_PI * minutes / 60.0;
+  float angle2 = TWO_PI * hours / 12.0;
+
+  //face
+  drawEvenCircle(63,31,30);
+
+  //hands
+  drawHand(angle1, 25);
+  drawHand(angle2, 14);
+
+  //notches 
+  int notchPos = 3;
+  drawEvenCircle(63,notchPos,1);
+  drawEvenCircle(63,62 - notchPos,1);
+  drawEvenCircle(32 + notchPos,31,1);
+  drawEvenCircle(94 - notchPos,31,1);
+  
+  /*
+  if(pm){
+    OLED.print("PM");
+  }
+  else{
+    OLED.print("AM");
+  }
+  */
+
+}
+
+void drawHand(float angleFromStart, int r){
+  if(r <= 0){
+    return;
+  }
+  float x = -sin(angleFromStart + PI);
+  float y = cos(angleFromStart + PI);
+  
+  int x1 = 63;
+  int y1 = 31;
+
+  if(x > 0){
+    x1 += 1;
+  }
+  if(y > 0){
+    y1 += 1;
+  }
+
+  int x2 = x1 + round(x*r);
+  int y2 = y1 + round(y*r);
+
+  OLED.drawLine(x1, y1, x2, y2, OLED_WHITE);
+
+}
+
+void drawEvenCircle(int x, int y, int r){
+  OLED.drawRoundRect(x-r+1, y-r+1, 2*r, 2*r, r, OLED_WHITE);
 }
 
 // ------------------------------------------------------------------------------------

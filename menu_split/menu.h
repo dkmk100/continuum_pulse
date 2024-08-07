@@ -193,7 +193,6 @@ public:
   }
   //displays the current screen on the stack
   void displayScreen(){
-    Serial.println("displaying screen");
     MenuScreen* screen = stack[count-1];
     screen->displayScreen();
   }
