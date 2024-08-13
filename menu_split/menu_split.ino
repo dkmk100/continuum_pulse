@@ -6,6 +6,7 @@
 #include "menu.h"
 #include "OLED_menu.h"
 #include "pedometer.h"
+#include "ButtonManager.h"
 
 #define DEBUG_PRINT true
 #define VERBOSE_DEBUG_DISPLAY false
@@ -16,14 +17,19 @@
 
 #define BUTTONS_PULLUP true
 #define HAS_TEMP_SENSOR false
-#define HAS_SPEAKER false
+#define HAS_SPEAKER true
 #define HAS_MOTOR false
-#define HAS_ACCEL false
+#define HAS_ACCEL true
+#define FIX_ACCEL false
 
-#define USE_CPX false
-#define USE_RP2040 true
+#define USE_CPX true
+#define USE_RP2040 false
 
-#define builtinMode true
+#define CAN_SLEEP true
+
+#define TWO_BUTTON_MODE true
+
+#define TAP_ON_RELEASE false
 
 const unsigned int clockDelay = 15;
 
@@ -66,7 +72,7 @@ void playTone(int freq, int dur) {
 #endif
 }
 
-void readAccel(float& ax, float& ay, float& az) {
+void readAccelBase(float& ax, float& ay, float& az) {
 #if HAS_ACCEL
   ax = CircuitPlayground.motionX();
   ay = CircuitPlayground.motionY();
@@ -78,11 +84,108 @@ void readAccel(float& ax, float& ay, float& az) {
 #endif
 }
 
+void fixAccel(float& ax, float& ay, float& az) {
+  const float x_offset = 0;
+  const float x_scale = 1;
+  const float y_offset = 0;
+  const float y_scale = 1;
+  const float z_offset = 0;
+  const float z_scale = 1;
+
+  ax = (ax + x_offset) * x_scale;
+  ay = (ay + y_offset) * y_scale;
+  az = (az + z_offset) * z_scale;
+}
+
+void readAccel(float& ax, float& ay, float& az) {
+  readAccelBase(ax, ay, az);
+#if FIX_ACCEL
+  fixAccel(ax, ay, az);
+#endif
+}
+
+#if TWO_BUTTON_MODE
+bool getBack() {
+  return false;
+}
+bool getAdvance() {
+#if USE_CPX
+  return CircuitPlayground.rightButton();
+#else
+  return !digitalRead(advancePin);
+#endif
+}
+bool getSelect() {
+#if USE_CPX
+  return CircuitPlayground.leftButton();
+#else
+  return !digitalRead(selectPin);
+#endif
+}
+#else
+bool getBack() {
+  return !digitalRead(backPin);
+}
+bool getAdvance() {
+  return !digitalRead(advancePin);
+}
+bool getSelect() {
+  return !digitalRead(selectPin);
+}
+#endif
+
+template<bool (*buttonFuncs[3])()>
+struct WatchButtonManager : public ButtonManager<3, TAP_ON_RELEASE, buttonFuncs>{
+  const int advanceId = 0;
+  const int selectId = 1;
+  const int backId = 2;
+
+  unsigned long advanceStarted = 0;
+  const long advanceTime = 1000;
+
+  void Update() override{
+    ButtonManager<3, TAP_ON_RELEASE, buttonFuncs>::Update();
+    #if TWO_BUTTON_MODE
+    if(getAdvanceTapped()){
+      advanceStarted = millis();
+    }
+    if(getAdvancePressed() && millis() > advanceStarted + advanceTime){
+      this->tapped[backId] = true;
+      this->pressed[backId] = true;
+      advanceStarted = millis();
+    }
+    #endif
+  }
+
+  bool getAdvancePressed(){
+    return this->getPressed(advanceId);
+  }
+  bool getSelectPressed(){
+    return this->getPressed(selectId);
+  }
+  bool getBackPressed(){
+    return this->getPressed(backId);
+  }
+
+  bool getAdvanceTapped(){
+    return this->getTapped(advanceId);
+  }
+  bool getSelectTapped(){
+    return this->getTapped(selectId);
+  }
+  bool getBackTapped(){
+    return this->getTapped(backId);
+  }
+};
+
 OLED_Display actual_display;
 
 OLED_Display* oled_display = &actual_display;
 MenuManager screenManager(oled_display);
 OLED_CLASS& OLED = oled_display->getOled();
+
+bool (*watchButtons[3])() = {getAdvance, getSelect, getBack};
+WatchButtonManager<watchButtons> buttons;
 
 //declare everything used in custom menu types
 void displayClock();
@@ -257,37 +360,6 @@ struct ClockConfigScreen : public MenuScreen {
   }
 };
 
-struct BoolMenuItem : public MenuItem {
-private:
-  ToggleSetting* setting;
-public:
-  BoolMenuItem(MenuManager* mana, ToggleSetting* sett, String myName)
-    : MenuItem(mana, myName) {
-    setting = sett;
-  }
-  void activate() override {
-    //toggle setting
-    setting->active = !(setting->active);
-  }
-  virtual String getName() {
-    String tempName = itemName.substring(0);
-    tempName.concat(" ");
-    int l = itemName.length();
-    if (l > 13) {
-      l = 13;
-    }
-    for (int i = 0; i < 13 - l; i++) {
-      tempName.concat("-");
-    }
-    if (setting->active) {
-      tempName.concat("- on");
-    } else {
-      tempName.concat(" off");
-    }
-    return tempName;
-  }
-};
-
 struct CalibrateMenuItem : public MenuItem {
   void activate() override {
     doCalibration();
@@ -295,32 +367,6 @@ struct CalibrateMenuItem : public MenuItem {
   CalibrateMenuItem(MenuManager* mana, String myName)
     : MenuItem(mana, myName) {
     //nothing to do here
-  }
-};
-
-struct SliderMenuItem : public NavItem {
-  SliderSetting* setting;
-  SliderMenuItem(MenuManager* mana, SliderScreen* dest, String myName)
-    : NavItem(mana, dest, myName) {
-    setting = dest->setting;
-  }
-  virtual String getName() {
-    String tempName = itemName.substring(0);
-    String numText = String(setting->get());
-    tempName.concat(" ");
-    int l = itemName.length();
-    int ml = 16 - numText.length();
-    if (ml < 8) {
-      ml = 8;
-    }
-    if (l > ml) {
-      l = ml;
-    }
-    for (int i = 0; i < ml - l; i++) {
-      tempName.concat("-");
-    }
-    tempName.concat(numText);
-    return tempName;
   }
 };
 
@@ -354,36 +400,6 @@ struct ClockMenuScreen : public MenuScreen {
 };
 
 //will change to the actual buttons later
-
-#if builtinMode
-bool getBackButton() {
-  return false;
-}
-bool getAdvanceButton() {
-  #if USE_CPX
-  return CircuitPlayground.rightButton();
-  #else
-  return !digitalRead(advancePin);
-  #endif
-}
-bool getSelectButton() {
-  #if USE_CPX
-  return CircuitPlayground.leftButton();
-  #else
-  return !digitalRead(selectPin);
-  #endif
-}
-#else
-bool getBackButton() {
-  return !digitalRead(backPin);
-}
-bool getAdvanceButton() {
-  return !digitalRead(advancePin);
-}
-bool getSelectButton() {
-  return !digitalRead(selectPin);
-}
-#endif
 
 SliderSetting* stepSize = new SliderSetting(20, 30, 21);
 void resetPedometer() {
@@ -435,7 +451,8 @@ void joggingEnd() {
   delay(600);
   bool done = false;
   while (!done) {
-    if (getBackButton() || getSelectButton() || getAdvanceButton()) {
+    buttons.Update();
+    if (buttons.getAnyPressed()) {
       done = true;
     } else {
       delay(10);
@@ -581,26 +598,26 @@ SliderScreen* tempLevelScreen = new SliderScreen(screenManager, tempLevel);
 
 void setup() {
   Serial.begin(115200);
-  if(WAIT_FOR_SERIAL){
-    while(!Serial){
+  if (WAIT_FOR_SERIAL) {
+    while (!Serial) {
       delay(10);
     }
   }
-  #if USE_CPX
+#if USE_CPX
   CircuitPlayground.begin();
-  #endif
-  #if HAS_SPEAKER
+#endif
+#if HAS_SPEAKER
   pinMode(speaker, OUTPUT);
-  #endif
-//pinMode(tempSensor,INPUT);
-//pinMode(motor,OUTPUT);
+#endif
+  //pinMode(tempSensor,INPUT);
+  //pinMode(motor,OUTPUT);
 
-#if builtinMode && !USE_CPX
+#if TWO_BUTTON_MODE && !USE_CPX
   pinMode(advancePin, INPUT_PULLUP);
   pinMode(selectPin, INPUT_PULLUP);
 #endif
 
-#if !builtinMode
+#if !TWO_BUTTON_MODE
   pinMode(backPin, INPUT);
   pinMode(advancePin, INPUT);
   pinMode(selectPin, INPUT);
@@ -739,7 +756,6 @@ int getWaterDelay() {
 void loop() {
   //low delay so everything is accurate
   const float delayDur = 10;
-  static int backTicks = 0;
   const float timeTillSleep = 10;
   static unsigned int lastMove = tStart;
   static unsigned int lastWater = millis();
@@ -750,34 +766,32 @@ void loop() {
   int coldLevel = tempLevel->get();
   int tempRead = getTemp();
 
-  float ax, ay, az;
+  float ax, ay, az, aTot;
+
+  //read accelerator input
   readAccel(ax, ay, az);
+  aTot = sqrt(ax * ax + ay * ay + az * az);
 
-  float aStepThreshold = 1.1;
+  //for pedometer
+  static float aTotPedometer = -99;
+  expSmoothPos(aTot, aTotPedometer, 0.5);
+
+#if VERBOSE_DEBUG_ACCEL
+  printMotion(ax, ay, az, aTot, aTotPedometer);
+#endif
+
+  float aStepThreshold = 1.2;
+
   //button setup:
-  static bool backWasPressed = false;
-  static bool advanceWasPressed = false;
-  static bool selectWasPressed = false;
+  buttons.Update();
 
-  bool backPressed = getBackButton();
-  bool advancePressed = getAdvanceButton();
-  bool selectPressed = getSelectButton();
+  bool backPressed = buttons.getBackPressed();
+  bool advancePressed = buttons.getAdvancePressed();
+  bool selectPressed = buttons.getSelectPressed();
 
-  bool backTapped = false;
-  bool advanceTapped = false;
-  bool selectTapped = false;
-  if (backPressed && !backWasPressed) {
-    backTapped = true;
-  }
-  if (advancePressed && !advanceWasPressed) {
-    advanceTapped = true;
-  }
-  if (selectPressed && !selectWasPressed) {
-    selectTapped = true;
-  }
-  backWasPressed = backPressed;
-  advanceWasPressed = advancePressed;
-  selectWasPressed = selectPressed;
+  bool backTapped = buttons.getBackTapped();
+  bool advanceTapped = buttons.getAdvanceTapped();
+  bool selectTapped = buttons.getSelectTapped();
 
   if (millis() > lastWater + getWaterDelay() * 1000 && doWaterReminders->active) {
     doWaterReminder();
@@ -801,28 +815,28 @@ void loop() {
   }
 
   if (ticksHot > timeToTempAlert) {
-    displayAlert("too hot!");
+    displayAlert("too\nhot!");
     ticksHot = timeToTempAlert / 2;
   }
   if (ticksCold > timeToTempAlert) {
-    displayAlert("too cold!");
+    displayAlert("too\ncold!");
     ticksCold = timeToTempAlert / 2;
   }
 
 
   static float lastCount = 0;
-  const float countTime = 0.1;
+  const float countTime = 0.125;
 
   //count steps
   float tNow = float(millis() - tStart) / 1000.0;  //  Time in seconds since the start
   if (tNow > lastCount + countTime) {
-    float a = accelSmooth(0.6, false, ax, ay, az) - aOffset;  //  Total acceleration relative to stationary
-    nSteps += count_step(a, aStepThreshold);                        //  Add to step count if a step was detected
-    lastCount = tNow;                                               //continue counting steps
+    float a = aTotPedometer - aOffset;        //  Total acceleration relative to stationary
+    nSteps += count_step(a, aStepThreshold);  //  Add to step count if a step was detected
+    lastCount = tNow;                         //continue counting steps
   }
 
   if (sleepMode) {
-    float sleepA = awakeSmooth(1.0, false, ax, ay, az) - aOffset;  //  Total acceleration relative to stationary
+    float sleepA = aTot;
 
     if (sleepA > 9.0 && millis() > lastMove + timeTillSleep * 1000 + 2000) {
       lastMove = millis();
@@ -833,28 +847,18 @@ void loop() {
       sleepMode = false;
     }
   } else {
-    float sleepA = awakeSmooth(1.0, DEBUG_PRINT && VERBOSE_DEBUG_ACCEL, ax, ay, az) - aOffset;  //  Total acceleration relative to stationary
+    float sleepA = aTot;
     if (sleepA > 9.0) {
       lastMove = millis();
       sleepMode = false;
     }
     if (backTapped) {
       screenManager.back();
-      backTicks = 0;
       lastMove = millis();  //keep watch awake
     }
-    if (advancePressed) {
-      backTicks++;
-      if (backTicks > 20 && builtinMode) {
-        screenManager.back();
-        backTicks = 0;
-        lastMove = millis();  //keep watch awake
-      } else if (advanceTapped) {
-        screenManager.advance();
-        lastMove = millis();  //keep watch awake
-      }
-    } else {
-      backTicks = 0;
+    if (advanceTapped) {
+      screenManager.advance();
+      lastMove = millis();  //keep watch awake
     }
     if (selectTapped) {
       screenManager.select();
@@ -876,29 +880,55 @@ void loop() {
     }
 
 
-    //HACK: temporarily disabling sleep mode as there is no accelerometer
-    /*
+#if CAN_SLEEP
     if (millis() > lastMove + timeTillSleep * 1000) {
       sleepMode = true;
       OLED.clearDisplay();
       OLED.display();
     }
-    */
+#endif
   }
   delay(delayDur);
 }
 
+void expSmoothPos(float val, float& smoothed, float alpha) {
+  if (smoothed < 0) {
+    smoothed = val;
+    return;
+  } else {
+    smoothed = alpha * val + (1 - alpha) * smoothed;
+  }
+}
+
+void printMotion(float ax, float ay, float az, float aTot, float aTotSmooth) {
+  Serial.print(ax);
+  Serial.print("\t");
+  Serial.print(ay);
+  Serial.print("\t");
+  Serial.print(az);
+  Serial.print("\t");
+  Serial.print(aTot);
+  if (aTotSmooth >= 0) {
+    Serial.print("\t");
+    Serial.println(aTotSmooth);
+  } else {
+    Serial.println("");
+  }
+}
+
 void doWaterReminder() {
-  displayAlert("Drink water!");
+  displayAlert("Drink\nwater!");
 }
 
 void displayAlert(String alert) {
   setMotor(true);
+  //TODO: center text
   screenManager.getDisplay().displayText(2, alert);
   bool awoke = false;
   while (!awoke) {
     playTone(650, 25);
-    if (getBackButton() || getAdvanceButton() || getSelectButton()) {
+    buttons.Update();
+    if (buttons.getAnyPressed()) {
       awoke = true;
     }
     delay(100);
@@ -943,26 +973,16 @@ void displayClock(bool twelveHour, bool roundFace) {
   int minutes = 0;
   int seconds = 0;
 
-  //Serial.println("calculating time");
-
   milliToTime(ourTime, hours, minutes, seconds);
-
-  //Serial.println("printing clock");
 
   OLED.clearDisplay();
 
-  if(roundFace){
-    printClockFace(hours, minutes, seconds);
-  }
-  else{
+  if (roundFace) {
+    printClockFace(hours, minutes, seconds, mil);
+  } else {
     printClock(hours, minutes, seconds, mil, twelveHour);
   }
-  
-  
-
   OLED.display();
-
-  //Serial.println("printed clock");
 }
 
 //displays a clock with correct formatting options
@@ -1010,64 +1030,72 @@ void printClock(int hours, int minutes, int seconds, int mil, bool twelveHour) {
   OLED.setTextSize(1);
 }
 
-void printClockFace(int hours, int minutes, int seconds){
+void printClockFace(int hours, int minutes, int seconds, int mil) {
   bool pm = hours >= 12;
   hours = hours % 12;
+  mil = mil % 1000;
 
   float angle1 = TWO_PI * minutes / 60.0;
   float angle2 = TWO_PI * hours / 12.0;
 
   //face
-  drawEvenCircle(63,31,30);
+  drawEvenCircle(63, 31, 30);
 
   //hands
   drawHand(angle1, 25);
   drawHand(angle2, 14);
 
-  //notches 
+  //notches
   int notchPos = 3;
-  drawEvenCircle(63,notchPos,1);
-  drawEvenCircle(63,62 - notchPos,1);
-  drawEvenCircle(32 + notchPos,31,1);
-  drawEvenCircle(94 - notchPos,31,1);
-  
-  /*
-  if(pm){
-    OLED.print("PM");
+  drawEvenCircle(63, notchPos, 1);
+  drawEvenCircle(63, 62 - notchPos, 1);
+  drawEvenCircle(32 + notchPos, 31, 1);
+  drawEvenCircle(94 - notchPos, 31, 1);
+
+  if (mil < 500) {
+    int rSize = 12;
+    int rJmp = 2;
+    int iters = rSize / rJmp;
+    for (int i = 0; i < iters; i++) {
+      OLED.drawRect(i * rJmp, 63 - rSize + i * rJmp, rSize - i * rJmp, rSize - i * rJmp, OLED_WHITE);
+    }
   }
-  else{
+
+  OLED.setCursor(99, 45);
+  OLED.setTextSize(2);
+  if (pm) {
+    OLED.print("PM");
+  } else {
     OLED.print("AM");
   }
-  */
-
+  OLED.setTextSize(1);
 }
 
-void drawHand(float angleFromStart, int r){
-  if(r <= 0){
+void drawHand(float angleFromStart, int r) {
+  if (r <= 0) {
     return;
   }
   float x = -sin(angleFromStart + PI);
   float y = cos(angleFromStart + PI);
-  
+
   int x1 = 63;
   int y1 = 31;
 
-  if(x > 0){
+  if (x > 0) {
     x1 += 1;
   }
-  if(y > 0){
+  if (y > 0) {
     y1 += 1;
   }
 
-  int x2 = x1 + round(x*r);
-  int y2 = y1 + round(y*r);
+  int x2 = x1 + round(x * r);
+  int y2 = y1 + round(y * r);
 
   OLED.drawLine(x1, y1, x2, y2, OLED_WHITE);
-
 }
 
-void drawEvenCircle(int x, int y, int r){
-  OLED.drawRoundRect(x-r+1, y-r+1, 2*r, 2*r, r, OLED_WHITE);
+void drawEvenCircle(int x, int y, int r) {
+  OLED.drawRoundRect(x - r + 1, y - r + 1, 2 * r, 2 * r, r, OLED_WHITE);
 }
 
 // ------------------------------------------------------------------------------------
@@ -1093,9 +1121,11 @@ int count_step(float a, float threshold) {
   return (n);
 }
 
-// ------------------------------------------------------------------------------------
-// makes a tone using a speaker pin
 void makeTone(unsigned char speakerPin, int frequencyInHertz, long timeInMilliseconds) {
+  tone(speakerPin, frequencyInHertz);
+  delay(timeInMilliseconds);
+  noTone(speakerPin);
+  /*
   int x;
   long delayAmount = (long)(1000000 / frequencyInHertz);
   long loopTime = (long)((timeInMilliseconds * 1000) / (delayAmount * 2));
@@ -1105,4 +1135,5 @@ void makeTone(unsigned char speakerPin, int frequencyInHertz, long timeInMillise
     digitalWrite(speakerPin, LOW);   // switch the pin back to low
     delayMicroseconds(delayAmount);  // and make the bottom part of the wave
   }
+  */
 }

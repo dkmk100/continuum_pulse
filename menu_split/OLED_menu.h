@@ -8,8 +8,8 @@
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT  64
 
-//#define USE_SSD1306
-#define USE_SH1106
+#define USE_SSD1306
+//#define USE_SH1106
 
 #include "menu.h"
 #include <Adafruit_GFX.h>       //  Generic graphics library: fonts, lines, effects

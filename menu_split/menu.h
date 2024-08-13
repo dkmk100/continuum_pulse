@@ -364,4 +364,61 @@ struct SliderScreen : public MenuScreen {
   }
 };
 
+struct SliderMenuItem : public NavItem {
+  SliderSetting* setting;
+  SliderMenuItem(MenuManager* mana, SliderScreen* dest, String myName)
+    : NavItem(mana, dest, myName) {
+    setting = dest->setting;
+  }
+  virtual String getName() {
+    String tempName = itemName.substring(0);
+    String numText = String(setting->get());
+    tempName.concat(" ");
+    int l = itemName.length();
+    int ml = 16 - numText.length();
+    if (ml < 8) {
+      ml = 8;
+    }
+    if (l > ml) {
+      l = ml;
+    }
+    for (int i = 0; i < ml - l; i++) {
+      tempName.concat("-");
+    }
+    tempName.concat(numText);
+    return tempName;
+  }
+};
+
+struct BoolMenuItem : public MenuItem {
+private:
+  ToggleSetting* setting;
+public:
+  BoolMenuItem(MenuManager* mana, ToggleSetting* sett, String myName)
+    : MenuItem(mana, myName) {
+    setting = sett;
+  }
+  void activate() override {
+    //toggle setting
+    setting->active = !(setting->active);
+  }
+  virtual String getName() {
+    String tempName = itemName.substring(0);
+    tempName.concat(" ");
+    int l = itemName.length();
+    if (l > 13) {
+      l = 13;
+    }
+    for (int i = 0; i < 13 - l; i++) {
+      tempName.concat("-");
+    }
+    if (setting->active) {
+      tempName.concat("- on");
+    } else {
+      tempName.concat(" off");
+    }
+    return tempName;
+  }
+};
+
 #endif
