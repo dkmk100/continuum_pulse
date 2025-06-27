@@ -1,0 +1,106 @@
+#ifndef INTERPRETER_HPP
+#define INTERPRETER_HPP
+#include "opcodes.h"
+#include "list.h"
+
+const int maxFrame = 40;
+const int maxVar = 24;
+const int startHeap = 512;
+
+struct StackFrame {
+  int vars[maxVar];
+  int ip;
+  const BytecodeFunc* func;
+  List<int> fRet;
+};
+
+struct BuiltinFunc {
+  PrimitiveType type;
+  int argCount;
+  PrimitiveType* argTypes;
+  int (*ptr)(int*);
+  BuiltinFunc(PrimitiveType type, int argCount, PrimitiveType* argTypes, int (*ptr)(int*)) {
+    this->type = type;
+    this->argCount = argCount;
+    this->argTypes = argTypes;
+    this->ptr = ptr;
+  }
+};
+
+class Interpreter {
+private:
+  BuiltinFunc* builtins;
+  int builtinsCount;
+
+  int frame = 0;
+  StackFrame* frames;
+  const BytecodeProgram* program;
+
+  List<int> fArgs;
+  List<int> labelIds;
+  List<int> labelLocations;
+
+  void addArgs(int a1, int a2, int a3);
+  int callFunction(BytecodeFunc* func, int r1, int r2);
+  int returnFunction(int r1, int r2);
+  int heapAlloc(int count);
+  void heapFree(int address);
+  void resizeHeap(int newSize);
+  void setConstAddress(int num1, int num2, int num3);
+  void setVarAddress(int num1, int num2, int num3);
+  int calcOffset();
+  int readFromAddress();
+  void writeToAddress(int val);
+  int getLocalAddress(int local);
+  bool isBuiltinFunction(String func);
+  void callBuiltinFunction(String func, int r1, int r2);
+
+  int getJumpTarget(int id, int startPos);
+  void addLabel(int id, int pos);
+  int getLabelPos(int id);
+
+  int stackSize = maxFrame * maxVar;
+  int stackRegCount = maxVar;
+
+  int* heap;
+  int heapLength;
+  int heapEnd = 0;
+
+  bool addressValid = false;
+  bool addressIsLiteral = false;
+  int a1, a2, a3;
+
+public:
+  Interpreter(BuiltinFunc* builtinFuncs, int builtinFuncsCount) {
+    builtins = builtinFuncs;
+    builtinsCount = builtinFuncsCount;
+    heap = new int[startHeap];
+    heapLength = startHeap;
+    frames = new StackFrame[maxFrame];
+  }
+  ~Interpreter() {
+    delete frames;
+    delete heap;
+  }
+
+  inline void begin(const BytecodeProgram& program) {
+    frame = 0;
+    frames[0].ip = 0;
+    frames[0].func = program.entryPoint();
+    this->program = &program;
+  }
+
+  bool step(void (*print)(String), bool debug, bool verbose);
+
+  inline void run(const BytecodeProgram& program, void (*print)(String), bool debug, bool verbose) {
+    begin(program);
+    while (frames[frame].ip < frames[frame].func->codeLen) {
+      if(!step(print, debug, verbose)){
+        Serial.println("Interpreter halted");
+        return;
+      }
+    }
+  }
+};
+
+#endif

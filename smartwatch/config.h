@@ -1,0 +1,4 @@
+#define FIVE_FOR_SOME_REASON 5
+
+//#define USE_SSD1306
+#define USE_SH1106
