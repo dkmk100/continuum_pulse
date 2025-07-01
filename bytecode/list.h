@@ -5,9 +5,9 @@ template<typename T>
 class List {
 private:
   T* arr = nullptr;
-  T smallArr[10];  //avoid dynamic allocation when possible
+  T smallArr[4];  //avoid dynamic allocation when possible
   int count = 0;
-  int size = 10;
+  int size = 4;
   void resize(int newSize) {
     if (newSize > size) {
       bool dynamic = false;
@@ -26,6 +26,14 @@ private:
     }
   }
 public:
+  List(){
+
+  }
+  ~List(){
+    if (arr != nullptr) {
+      delete arr;
+    }
+  }
   T* dest() {
     if (arr != nullptr) {
       return arr;

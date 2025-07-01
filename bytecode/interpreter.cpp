@@ -22,8 +22,12 @@ String ToHex(int x) {
 
 void Interpreter::addArgs(int a1, int a2, int a3) {
   fArgs.add(a1);
-  fArgs.add(a2);
-  fArgs.add(a3);
+  if (a2 > 0) {
+    fArgs.add(a2);
+  }
+  if (a3 > 0) {
+    fArgs.add(a3);
+  }
 }
 
 int Interpreter::callFunction(BytecodeFunc* func, int r1, int r2) {
@@ -308,6 +312,9 @@ void Interpreter::callBuiltinFunction(String func, int r1, int r2) {
 bool Interpreter::step(void (*print)(String), bool debug, bool verbose) {
   if (frames[frame].ip < 0 || frames[frame].ip > frames[frame].func->codeLen) {
     frames[frame].ip = -1;
+    return false;
+  }
+  if (!valid) {
     return false;
   }
 

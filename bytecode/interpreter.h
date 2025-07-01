@@ -3,9 +3,10 @@
 #include "opcodes.h"
 #include "list.h"
 
-const int maxFrame = 40;
-const int maxVar = 24;
-const int startHeap = 512;
+//TODO optimize variable storage
+const int maxFrame = 15;
+const int maxVar = 12;
+const int startHeap = 256;
 
 struct StackFrame {
   int vars[maxVar];
@@ -69,6 +70,8 @@ private:
   bool addressValid = false;
   bool addressIsLiteral = false;
   int a1, a2, a3;
+  
+  bool valid;
 
 public:
   Interpreter(BuiltinFunc* builtinFuncs, int builtinFuncsCount) {
@@ -77,10 +80,15 @@ public:
     heap = new int[startHeap];
     heapLength = startHeap;
     frames = new StackFrame[maxFrame];
+    valid = true;
   }
   ~Interpreter() {
     delete frames;
     delete heap;
+  }
+
+  inline bool ready(){
+    return valid && frames[frame].ip < frames[frame].func->codeLen;
   }
 
   inline void begin(const BytecodeProgram& program) {
@@ -88,6 +96,11 @@ public:
     frames[0].ip = 0;
     frames[0].func = program.entryPoint();
     this->program = &program;
+    valid = true;
+  }
+
+  inline void halt(){
+    valid = false;
   }
 
   bool step(void (*print)(String), bool debug, bool verbose);
@@ -97,9 +110,11 @@ public:
     while (frames[frame].ip < frames[frame].func->codeLen) {
       if(!step(print, debug, verbose)){
         Serial.println("Interpreter halted");
+        valid = false;
         return;
       }
     }
+    valid = false;
   }
 };
 
