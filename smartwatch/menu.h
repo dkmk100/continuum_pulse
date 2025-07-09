@@ -2,124 +2,16 @@
 #define menu_hpp
 #include "Arduino.h"
 
+#include "display_wrapper.h"
 
-//the display class is meant as a wrapper for whatever physical display is being used, extend to use the appropriate library
-class Display{
-  protected:
-  //unused ATM, the plan is to allow a toggle between relative and absolute coords for dealing with different screens. 
-  //Still in beta though, so not implemented yet.
-  bool absoluteMode = false;
-  public:
-  //does the entire display process for a piece of text.
-  void displayText(int textSize, char *message){
-    displayText(textSize,String(message));
-  }
-  void displayText(int textSize, String message){
-    clear();
-    setCursor(0,0);
-    printText(textSize, message);
-    display();
-  }
-  
-  void displayTimedText(int seconds, String updateText){
-    //absolute mode would provide a danger to this function, probably temp disable it...
-    clear();
-    setCursor(0,0);
-
-    //The F( ) macro keeps constant strings from using program memory. Very nice to hav
-    printText(1,F("t = "));     //  String constant is contained in F(...)
-    printText(1,seconds); 
-    printText(1,F("  s"));      //  String constant is contained in F(...)
-
-    // -- Displays the other info
-    setCursor(0,24); 
-    printText(2,updateText);
-
-    display();//actually show the text
-  }
-  //sets the text cursor for the display
-  virtual void setCursor(int x, int y) = 0;
-  //sends a message with a text size.
-  virtual void printText(int textSize, char *message) = 0;
-  virtual void printText(int textSize, String message) = 0;
-
-  //other stuff is easily cast up lol
-  virtual void printText(int textSize, double message) = 0;
-  virtual void printText(int textSize, long message) = 0;
-
-  //ez casting
-  inline void printText(int textSize, int message){
-    printText(textSize,(long)message);
-  }
-
-  //just some size functions for more info about the display.
-  virtual int getSizeX() = 0;
-  virtual int getSizeY() = 0;
-  //prints a rectangle at pos
-  virtual void printRect(int x, int y, int w, int h) = 0;
-  //prints a circle at pos
-  virtual void printCircle(int x, int y, int r) = 0;
-  //used to initialize the display
-  virtual void setup() = 0;
-  //clears everything on the display
-  virtual void clear() = 0;
-  //displays whatever is in the buffer
-  virtual void display() = 0;
+enum class MenuButton{
+  BACK, LEFT, RIGHT, SELECT
 };
 
-//so you don't have to deal with display pointers
-//since arduino libraries are supposed to abstract away pointers from the end user
-//does nothing else. at all.
-class DisplayWrapper{
-  protected:
-  Display* disp;
-  
-  public: 
-  DisplayWrapper(Display* disp){
-    this->disp = disp;
-  }
-  inline void displayText(int textSize, char *message){
-    disp->displayText(textSize, message);
-  }
-  inline void displayText(int textSize, String message){
-    disp->displayText(textSize, message);
-  }
-  inline void displayTimedText(int seconds, String updateText){
-    disp->displayTimedText(seconds,updateText);
-  }
-  inline void setCursor(int x, int y){
-    disp->setCursor(x,y);
-  }
-  inline void printText(int textSize, char *message){
-    disp->printText(textSize, message);
-  }
-  inline void printText(int textSize, String message){
-    disp->printText(textSize, message);
-  }
-  inline void printText(int textSize, double message){
-    disp->printText(textSize, message);
-  }
-  inline void printText(int textSize, long message){
-    disp->printText(textSize, message);
-  }
-  inline int getSizeX(){
-    return disp->getSizeX();
-  }
-  inline int getSizeY(){
-    return disp->getSizeY();
-  }
-  inline void printRect(int x, int y, int w, int h){
-    disp->printRect(x,y,w,h);
-  }
-  inline void printCircle(int x, int y, int r){
-    disp->printCircle(x,y,r);
-  }
-  inline void clear(){
-    disp->clear();
-  }
-  inline void display(){
-    disp->display();
-  }
+struct MenuButtonsState{
+  bool tapped[4];
+  bool pressed[4];
+  bool supported[4];
 };
 
 struct MenuManager;
@@ -128,57 +20,36 @@ struct MenuManager;
 struct MenuScreen{
   MenuManager* manager;
   String screenName = "test";
-  virtual void onAdvance() = 0;
-  virtual void onSelect() = 0;
-  //not pure virtual since use can be disabled
-  virtual void onAdvanceHold(){
-    
-  }
-  virtual void onSelectHold(){
-    
-  }
 
-  //default to false, thus not abstract.
-  virtual boolean customBack(){
-    return false;
-  }
-  virtual boolean customHold(){
-    return false;
-  }
-  //not pure virtual since use can be disabled
-  virtual void onBack(){
-    
-  }
-  
-  virtual void displayScreen();
+  virtual void tick(MenuButtonsState state) = 0;
+  virtual void render(Display& display) = 0;
   
   MenuScreen(MenuManager& menuManager){
     manager = &menuManager;
   }
 };
 
+/*
 //the menu manager class keeps track of screens open, as well as 
 class MenuManager {
 private:
-  int maxStack;
-  MenuScreen** stack;
+  const int maxStack;
+  MenuScreen* stack[maxStack];
   int count;
   int selected = 0;
-  Display* display;
+  Display& display;
 public:
-  MenuManager(Display* disp){
-    maxStack = 10;
-    stack = new MenuScreen*[maxStack];
+  MenuManager(Display& disp){
     count = 0;
     display = disp;
   }
   ~MenuManager(){
-    delete[] stack;
+    
   }
-  inline DisplayWrapper getDisplay(){
-    return DisplayWrapper(display);
+  inline Display& getDisplay(){
+    return display;
   }
-  void setScreen(MenuScreen* screen){
+  void setScreen(MenuScreen& screen){
     Serial.println("Setting screen");
     if(count >= maxStack){
       display->clear();
@@ -228,6 +99,9 @@ public:
     screen->onAdvance();
   }
 };
+*/
+
+/*
 
 //menu items, for the nav menu screen. The things that make options menus possible.
 struct MenuItem{
@@ -302,7 +176,9 @@ struct NavigationMenuScreen : public MenuScreen{
     }
   }
 };
+*/
 
+/*
 struct ToggleSetting{
   boolean active = false;
   ToggleSetting(boolean act){
@@ -422,5 +298,5 @@ public:
     return tempName;
   }
 };
-
+*/
 #endif

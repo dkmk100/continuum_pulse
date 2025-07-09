@@ -53,8 +53,8 @@ unsigned int freeMemory() {
 }
 
 void printFreeMemory() {
-  int bytes = freeMemory() / 8;
-  Serial.print(bytes / 1024);
+  int bytes = freeMemory();
+  Serial.print(bytes / (float)1024);
   Serial.println("kb");
 }
 
@@ -96,7 +96,7 @@ BytecodeProgram program;
 bool programLoaded = false;
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   while (!Serial) {
     delay(10);
   }
@@ -131,17 +131,23 @@ void setup() {
 
   usb_msc.begin();
 
+  Serial.println(F("begin usb remount"));
+  delay(200);
+
   // If already enumerated, additional class driverr begin() e.g msc, hid, midi won't take effect until re-enumeration
   if (TinyUSBDevice.mounted()) {
     TinyUSBDevice.detach();
-    delay(10);
+    delay(25);
     TinyUSBDevice.attach();
   }
 
   // Reconnect Serial to ensure communcation works
-  Serial.begin(115200);
+  Serial.begin(9600);
   while (!Serial) {
-    delay(10);
+    CircuitPlayground.setPixelColor(0, 255, 0, 0);
+    delay(100);
+    CircuitPlayground.setPixelColor(0, 0, 0, 0);
+    delay(100);
   }
 
   Serial.println(F("begin file system mount"));
@@ -218,8 +224,9 @@ void fileStuff() {
           }
           buff[num] = 0;
           Serial.print(buff);
+          Serial.println();
+          delay(1000);
         }
-        Serial.println();
       }
     }
     file.close();

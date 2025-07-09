@@ -1,5 +1,5 @@
 #include "menu.h"
-
+/*
 void MenuScreen::displayScreen(){
   DisplayWrapper disp = manager->getDisplay();
   disp.clear();
@@ -21,3 +21,4 @@ void NavigationMenuScreen::displayScreen(){
   disp.printRect(0,5 + 8*selected,8,6);
   disp.display();
 }
+*/

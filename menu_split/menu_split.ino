@@ -10,7 +10,7 @@
 
 #define DEBUG_PRINT true
 #define VERBOSE_DEBUG_DISPLAY false
-#define VERBOSE_DEBUG_BUTTONS true
+#define VERBOSE_DEBUG_BUTTONS false
 #define VERBOSE_DEBUG_ACCEL false
 const unsigned int baudRate = 115200;
 
