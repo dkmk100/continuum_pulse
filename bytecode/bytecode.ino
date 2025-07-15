@@ -14,6 +14,8 @@
 // for flashTransport definition
 #include "flash_config.h"
 
+#include "Arduino.h"
+
 Adafruit_SPIFlash flash(&flashTransport);
 
 // file system object from SdFat
@@ -53,23 +55,33 @@ unsigned int freeMemory() {
 }
 
 void printFreeMemory() {
-  int bytes = freeMemory();
+  unsigned int bytes = freeMemory();
   Serial.print(bytes / (float)1024);
   Serial.println("kb");
 }
 
 int leftButton(int* dat) {
   return CircuitPlayground.leftButton();
+  //return false;
 }
 
 int rightButton(int* dat) {
   return CircuitPlayground.rightButton();
+  //return false;
 }
 
 int setPixelColor(int* dat) {
   CircuitPlayground.setPixelColor(dat[0], dat[1], dat[2], dat[3]);
+  /*
+  for (int i = 0; i < 4; i++) {
+    Serial.print(dat[0]);
+  }
+  Serial.println();
+  */
   return 0;
 }
+
+
 
 int doDelay(int* dat) {
   //delay(dat[0]);
@@ -86,8 +98,8 @@ BuiltinFunc builtins[] = {
   { PrimitiveType::VOID, 4, (PrimitiveType[]){ PrimitiveType::INT }, &doDelay },
 };
 
-void print(String str) {
-  Serial.print(str.c_str());
+void print(const char* str) {
+  Serial.print(str);
   delay(20);
 }
 
@@ -100,6 +112,8 @@ void setup() {
   while (!Serial) {
     delay(10);
   }
+
+  pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.print("Pre-init free memory: ");
   printFreeMemory();
@@ -136,17 +150,30 @@ void setup() {
 
   // If already enumerated, additional class driverr begin() e.g msc, hid, midi won't take effect until re-enumeration
   if (TinyUSBDevice.mounted()) {
+    Serial.println("full remount required");
+    Serial.flush();
+    delay(200);
+    //weird serial shuffle might work maybe?!?!
+    //WTF is going on
+    Serial.end();
+    delay(25);
     TinyUSBDevice.detach();
     delay(25);
+    TinyUSBDevice.attach();
+    delay(25);
+    Serial.begin(9600);
+  }
+  else{
     TinyUSBDevice.attach();
   }
 
   // Reconnect Serial to ensure communcation works
-  Serial.begin(9600);
   while (!Serial) {
-    CircuitPlayground.setPixelColor(0, 255, 0, 0);
+    //CircuitPlayground.setPixelColor(0, 255, 0, 0);
+    digitalWrite(LED_BUILTIN, HIGH);
     delay(100);
-    CircuitPlayground.setPixelColor(0, 0, 0, 0);
+    //CircuitPlayground.setPixelColor(0, 0, 0, 0);
+    digitalWrite(LED_BUILTIN, LOW);
     delay(100);
   }
 
@@ -163,17 +190,29 @@ void setup() {
 
   resumeTime = millis();
 
+  ///*
   Serial.println("begin file stuff");
   root.open("/");
   fileStuff();
   root.close();
   Serial.println("end file stuff");
+  //*/
 }
 
-void LoadProgram(BytecodeProgram& program) {
-  Serial.println(F("Loading program..."));
+void LoadDefaultProgram(BytecodeProgram& program) {
+  Serial.println(F("Loading default program..."));
   CreateDefaultProgram(program);
-  Serial.println(F("Program loaded"));
+  Serial.println(F("Default program loaded"));
+  Serial.print("Free memory: ");
+  printFreeMemory();
+  programLoaded = true;
+}
+
+void LoadProgram(BytecodeProgram& program, InStream& stream) {
+  Serial.println("Loading code file...");
+  BytecodeReader reader;
+  reader.readCode(program, stream);
+  Serial.println("Loaded code file");
   Serial.print("Free memory: ");
   printFreeMemory();
   programLoaded = true;
@@ -210,10 +249,18 @@ void fileStuff() {
       if (end >= 3 && name[end - 3] == '.' && name[end - 2] == 'd' && name[end - 1] == 'a' && name[end] == 't') {
         Serial.print("found possible code file: ");
         Serial.println(name);
-        InStream stream(10, &readFile);
-        int num = 10;
+
+        InStream stream(20, *readFile);
+        LoadProgram(program, stream);
+
+        //RunProgram(program);
+
+        /*
+        int lineSize = 16;
+        InStream stream(lineSize, &readFile);
+        int num = 0;
         while (stream.advance(num)) {
-          char buff[11];
+          char buff[lineSize + 1];
           char* ch = stream.read();
           num = stream.getCount();
           for (int i = 0; i < num; i++) {
@@ -221,12 +268,16 @@ void fileStuff() {
             if (buff[i] == 0) {
               buff[i] = 126;
             }
+            else if(buff[i] > 126){
+              buff[i] = 35;
+            }
           }
           buff[num] = 0;
           Serial.print(buff);
           Serial.println();
-          delay(1000);
+          delay(100);
         }
+        */
       }
     }
     file.close();
@@ -263,11 +314,9 @@ void loop() {
   if (startTime < resumeTime) {
     return;
   }
-  /*
   while (startTime - 10 < millis() && interpreter.ready()) {
     interpreter.step(&print, false, false);
   }
-  */
 }
 
 // Callback invoked when received READ10 command.

@@ -42,49 +42,4 @@ public:
   virtual void drawRoundedRect(int x, int y, int w, int h, int r, bool fill) = 0;
   virtual void drawEvenCircle(int x, int y, int r, bool fill) = 0;
 };
-
-//so you don't have to deal with display pointers
-//since arduino libraries are supposed to abstract away pointers from the end user
-//does nothing else. at all.
-/*
-class DisplayWrapper {
-protected:
-  Display *disp;
-
-public:
-  DisplayWrapper(Display *disp) {
-    this->disp = disp;
-  }
-  inline void setCursor(int x, int y) {
-    disp->setCursor(x, y);
-  }
-  inline void printText(int textSize, const char *message) {
-    disp->printText(textSize, message);
-  }
-  inline void printText(int textSize, double message) {
-    disp->printText(textSize, message);
-  }
-  inline void printText(int textSize, long message) {
-    disp->printText(textSize, message);
-  }
-  inline int getSizeX() {
-    return disp->getSizeX();
-  }
-  inline int getSizeY() {
-    return disp->getSizeY();
-  }
-  inline void drawRect(int x, int y, int w, int h, bool fill) {
-    disp->drawRect(x, y, w, h, fill);
-  }
-  inline void drawCircle(int x, int y, int r, bool fill) {
-    disp->drawCircle(x, y, r, fill);
-  }
-  inline void clear() {
-    disp->clear();
-  }
-  inline void display() {
-    disp->display();
-  }
-};
-*/
 #endif

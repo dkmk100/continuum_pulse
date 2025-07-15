@@ -1,14 +1,17 @@
 #ifndef menu_hpp
 #define menu_hpp
-#include "Arduino.h"
 
 #include "display_wrapper.h"
+#include "logger.h"
 
-enum class MenuButton{
-  BACK, LEFT, RIGHT, SELECT
+enum class MenuButton {
+  BACK,
+  LEFT,
+  RIGHT,
+  SELECT
 };
 
-struct MenuButtonsState{
+struct MenuButtonsState {
   bool tapped[4];
   bool pressed[4];
   bool supported[4];
@@ -17,20 +20,22 @@ struct MenuButtonsState{
 struct MenuManager;
 
 //a screen for the menu manager. Abstract, please extend to use. For a screen with menu items, see NavigationScreen.
-struct MenuScreen{
+struct MenuScreen {
   MenuManager* manager;
-  String screenName = "test";
 
-  virtual void tick(MenuButtonsState state) = 0;
+  virtual void tick(const MenuButtonsState& state) = 0;
   virtual void render(Display& display) = 0;
-  
-  MenuScreen(MenuManager& menuManager){
+  virtual bool hasDefaultBehavior() {
+    return true;
+  }
+  virtual const char* getName() = 0;
+
+  MenuScreen(MenuManager& menuManager) {
     manager = &menuManager;
   }
 };
 
-/*
-//the menu manager class keeps track of screens open, as well as 
+//the menu manager class keeps track of screens open
 class MenuManager {
 private:
   const int maxStack;
@@ -38,68 +43,53 @@ private:
   int count;
   int selected = 0;
   Display& display;
+  Logger& logger;
 public:
-  MenuManager(Display& disp){
+  MenuManager(Display& disp, Logger& log) {
     count = 0;
     display = disp;
+    logger = log;
   }
-  ~MenuManager(){
-    
+  ~MenuManager() {
   }
-  inline Display& getDisplay(){
+  inline Display& getDisplay() {
     return display;
   }
-  void setScreen(MenuScreen& screen){
-    Serial.println("Setting screen");
-    if(count >= maxStack){
-      display->clear();
-      Serial.println("ERROR:: STACK LIMIT REACHED");
-      display->setCursor(0,24);
-      display->printText(2,"STACK ERROR");
-      display->display();
-      delay(500);
-    }
-    else{
-      stack[count] = screen;
-      count ++;
+  void setScreen(MenuScreen& screen) {
+    logger.log("Setting screen: %s", screen.getName());
+    Serial.println();
+    if (count >= maxStack) {
+      logger.log("ERROR:: STACK LIMIT REACHED");
+      count++;
+    } else {
+      stack[count] = &screen;
+      count++;
     }
   }
   //displays the current screen on the stack
-  void displayScreen(){
-    MenuScreen* screen = stack[count-1];
-    screen->displayScreen();
+  void renderScreen() {
+    if (count <= maxStack) {
+      MenuScreen* screen = stack[count - 1];
+      screen->render(display);
+    } else {
+      display->clear();
+      display->setCursor(0, 24);
+      display->print("STACK ERROR", 2);
+      display->display();
+    }
   }
+
+  void tick(MenuButtonsState& state){
+
+  }
+
   //returns to the previous screen
-  void setLast(){
-    if(count > 1){
-      count --;
+  void setLast() {
+    if (count > 1) {
+      count--;
     }
-  }
-
-  //handle a back button, calls custom screen back functionality
-  void back(){
-    MenuScreen* screen = stack[count-1];
-    if(screen->customBack()){
-      screen->onBack();
-    }
-    else{
-      setLast();
-    }
-  }
-
-  //handles select button
-  void select(){
-    MenuScreen* screen = stack[count-1];
-    screen->onSelect();
-  }
-
-  //handles advance button
-  void advance(){
-    MenuScreen* screen = stack[count-1];
-    screen->onAdvance();
   }
 };
-*/
 
 /*
 

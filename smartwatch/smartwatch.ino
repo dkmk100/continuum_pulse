@@ -6,7 +6,6 @@
 #include "OLED_display.h"
 #include "logger.h"
 
-
 const unsigned int clockDelay = 12;
 
 //adafruit display

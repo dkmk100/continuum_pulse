@@ -206,14 +206,14 @@ inline void CreateDefaultProgram(BytecodeProgram& program) {
     { 59, main_func, 0, "main" },
   };
   int funcTargetsCount = 4;
-  String* funcTargets = new String[4]{
+  const char** funcTargets = new const char*[4]{
     "libc.printf",
     "libc.malloc",
     "libc.free",
     "main",
   };
   int stringsCount = 0;
-  String* strings = new String[0]{};
+  const char** strings = new const char*[0]{};
 
   //*/
 

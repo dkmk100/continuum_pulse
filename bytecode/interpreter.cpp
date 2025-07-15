@@ -3,6 +3,8 @@
 #include <cstring>
 #include <sstream>
 
+#include <Arduino.h>
+
 bool ToBool(int x) {
   return x != 0;
 }
@@ -285,11 +287,11 @@ int GetLocalAddress(int local) {
 
 */
 
-bool Interpreter::isBuiltinFunction(String func) {
+bool Interpreter::isBuiltinFunction(const char* func) {
   return func == "libc.malloc" || func == "libc.free";
 }
 
-void Interpreter::callBuiltinFunction(String func, int r1, int r2) {
+void Interpreter::callBuiltinFunction(const char* func, int r1, int r2) {
   int* args = new int[fArgs.getCount()];
   for (int i = 0; i < fArgs.getCount(); i++) {
     int v = fArgs[i];
@@ -309,7 +311,7 @@ void Interpreter::callBuiltinFunction(String func, int r1, int r2) {
   delete args;
 }
 
-bool Interpreter::step(void (*print)(String), bool debug, bool verbose) {
+bool Interpreter::step(void (*print)(const char*), bool debug, bool verbose) {
   if (frames[frame].ip < 0 || frames[frame].ip > frames[frame].func->codeLen) {
     frames[frame].ip = -1;
     return false;
@@ -327,9 +329,9 @@ bool Interpreter::step(void (*print)(String), bool debug, bool verbose) {
 
   if (verbose) {
     (*print)("(ip: ");
-    (*print)(String(i));
+    (*print)(String(i).c_str());
     (*print)(", opcode: ");
-    (*print)(String((int)inst[i].opCode));
+    (*print)(String((int)inst[i].opCode).c_str());
     (*print)(", func: ");
     (*print)(frames[frame].func->name);
     (*print)(")\n");
@@ -414,7 +416,7 @@ bool Interpreter::step(void (*print)(String), bool debug, bool verbose) {
 
     case OpCodeI::FUNC_CALL:
       {
-        String name = program->getFuncTarget(inst[i].num1);
+        const char* name = program->getFuncTarget(inst[i].num1);
         Serial.print("going to call func: ");
         Serial.println(name);
         if (isBuiltinFunction(name)) {
@@ -439,9 +441,9 @@ bool Interpreter::step(void (*print)(String), bool debug, bool verbose) {
           args[i] = frames[frame].vars[v];
           if (verbose) {
             Serial.print("arg: ");
-            Serial.print(String(args[i]));
+            Serial.print(String(args[i]).c_str());
             Serial.print(" (");
-            Serial.print(String(v));
+            Serial.print(String(v).c_str());
             Serial.println(")");
           }
         }
@@ -484,10 +486,10 @@ bool Interpreter::step(void (*print)(String), bool debug, bool verbose) {
       (*print)(program->strings[vars[inst[i].num1]]);
       break;
     case OpCodeI::PRINT_NUM:
-      (*print)(String(vars[inst[i].num1]));
+      (*print)(String(vars[inst[i].num1]).c_str());
       break;
     case OpCodeI::PRINT_ADDR:
-      (*print)(ToHex(vars[inst[i].num1]));
+      (*print)(ToHex(vars[inst[i].num1]).c_str());
       break;
     case OpCodeI::PRINT_BOOL:
       if (vars[inst[i].num1] == 0) {
@@ -497,11 +499,11 @@ bool Interpreter::step(void (*print)(String), bool debug, bool verbose) {
       }
       break;
     case OpCodeI::PRINT_CHAR:
-      (*print)(String(vars[inst[i].num1]));
+      (*print)(String(vars[inst[i].num1]).c_str());
       break;
     default:
       (*print)("Invalid opcode: ");
-      (*print)(String((int)inst[i].opCode));
+      (*print)(String((int)inst[i].opCode).c_str());
       return false;
   }
 

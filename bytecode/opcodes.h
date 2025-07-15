@@ -1,6 +1,5 @@
 #ifndef OPCODES_HPP
 #define OPCODES_HPP
-#include <Arduino.h>
 
 enum class OpCodeI : unsigned char;
 
@@ -39,8 +38,8 @@ struct BytecodeFunc {
   int codeLen;
   BytecodeInst* code;
   int args;
-  String name;
-  BytecodeFunc(int codeLen, BytecodeInst* code, int args, String name) {
+  const char* name;
+  BytecodeFunc(int codeLen, BytecodeInst* code, int args, const char* name) {
     this->codeLen = codeLen;
     this->code = code;
     this->args = args;
@@ -53,13 +52,13 @@ public:
   int funcsCount;
   BytecodeFunc* funcs;
   int funcTargetsCount;
-  String* funcTargets;
+  const char** funcTargets;
   int stringsCount;
-  String* strings;
+  const char** strings;
 
   BytecodeProgram() {
   }
-  BytecodeProgram(int funcsCount, BytecodeFunc* funcs, int funcTargetsCount, String* funcTargets, int stringsCount, String* strings) {
+  BytecodeProgram(int funcsCount, BytecodeFunc* funcs, int funcTargetsCount, const char** funcTargets, int stringsCount, const char** strings) {
     this->funcsCount = funcsCount;
     this->funcs = funcs;
     this->funcTargetsCount = funcTargetsCount;
@@ -68,25 +67,19 @@ public:
     this->strings = strings;
   }
 
-  inline String getFuncTarget(int id) const {
+  inline const char* getFuncTarget(int id) const {
     if (id < funcTargetsCount) {
       return funcTargets[id];
     }
-    Serial.print("invalid func id: ");
-    Serial.println(String(id));
-    delay(100);
     return "";
   }
 
-  inline BytecodeFunc* getFunc(String name) const {
+  inline BytecodeFunc* getFunc(const char* name) const {
     for (int i = 0; i < funcsCount; i++) {
       if (funcs[i].name == name) {
         return funcs + i;
       }
     }
-    Serial.print("invalid func name: ");
-    Serial.println(name);
-    delay(100);
     return nullptr;
   }
 

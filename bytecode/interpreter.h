@@ -53,8 +53,8 @@ private:
   int readFromAddress();
   void writeToAddress(int val);
   int getLocalAddress(int local);
-  bool isBuiltinFunction(String func);
-  void callBuiltinFunction(String func, int r1, int r2);
+  bool isBuiltinFunction(const char* func);
+  void callBuiltinFunction(const char* func, int r1, int r2);
 
   int getJumpTarget(int id, int startPos);
   void addLabel(int id, int pos);
@@ -71,7 +71,7 @@ private:
   bool addressIsLiteral = false;
   int a1, a2, a3;
   
-  bool valid;
+  bool valid = false;
 
 public:
   Interpreter(BuiltinFunc* builtinFuncs, int builtinFuncsCount) {
@@ -80,7 +80,6 @@ public:
     heap = new int[startHeap];
     heapLength = startHeap;
     frames = new StackFrame[maxFrame];
-    valid = true;
   }
   ~Interpreter() {
     delete frames;
@@ -103,13 +102,12 @@ public:
     valid = false;
   }
 
-  bool step(void (*print)(String), bool debug, bool verbose);
+  bool step(void (*print)(const char*), bool debug, bool verbose);
 
-  inline void run(const BytecodeProgram& program, void (*print)(String), bool debug, bool verbose) {
+  inline void run(const BytecodeProgram& program, void (*print)(const char*), bool debug, bool verbose) {
     begin(program);
     while (frames[frame].ip < frames[frame].func->codeLen) {
       if(!step(print, debug, verbose)){
-        Serial.println("Interpreter halted");
         valid = false;
         return;
       }
