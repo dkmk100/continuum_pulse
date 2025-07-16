@@ -5,7 +5,8 @@ template<typename T>
 class List {
 private:
   T* arr = nullptr;
-  T smallArr[4];  //avoid dynamic allocation when possible
+  const static int smallSize = 4;
+  T smallArr[smallSize];  //avoid dynamic allocation when possible
   int count = 0;
   int size = 4;
   void resize(int newSize) {
@@ -55,6 +56,8 @@ public:
     count = 0;
     if (arr != nullptr) {
       delete arr;
+      arr = nullptr;
+      size = smallSize;
     }
   }
 

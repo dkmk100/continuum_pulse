@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <sstream>
+#include <cstring>
 
 #include <Arduino.h>
 
@@ -22,13 +23,34 @@ String ToHex(int x) {
   return String(c + 20 - i - 1);
 }
 
-void Interpreter::addArgs(int a1, int a2, int a3) {
+void Interpreter::addArgs(int a1, int a2, int a3, bool debug, bool verbose) {
   fArgs.add(a1);
+  if (verbose) {
+    Serial.print("add arg: ");
+    Serial.print(String(frames[frame].vars[a1]).c_str());
+    Serial.print(" (");
+    Serial.print(String(a1).c_str());
+    Serial.println(")");
+  }
   if (a2 > 0) {
     fArgs.add(a2);
+    if (verbose) {
+      Serial.print("add arg: ");
+      Serial.print(String(frames[frame].vars[a2]).c_str());
+      Serial.print(" (");
+      Serial.print(String(a2).c_str());
+      Serial.println(")");
+    }
   }
   if (a3 > 0) {
     fArgs.add(a3);
+    if (verbose) {
+      Serial.print("add arg: ");
+      Serial.print(String(frames[frame].vars[a3]).c_str());
+      Serial.print(" (");
+      Serial.print(String(a3).c_str());
+      Serial.println(")");
+    }
   }
 }
 
@@ -67,7 +89,11 @@ int Interpreter::callFunction(BytecodeFunc* func, int r1, int r2) {
 }
 
 int Interpreter::returnFunction(int r1, int r2) {
-  if (frames[frame].func->name == "main") {
+  //TODO check this better
+  if (frame == 0) {
+    return -1;
+  }
+  if (!strcmp(frames[frame].func->name, "main")) {
     return -1;
   }
 
@@ -288,7 +314,7 @@ int GetLocalAddress(int local) {
 */
 
 bool Interpreter::isBuiltinFunction(const char* func) {
-  return func == "libc.malloc" || func == "libc.free";
+  return !strcmp(func, "libc.malloc") || !strcmp(func, "libc.free");
 }
 
 void Interpreter::callBuiltinFunction(const char* func, int r1, int r2) {
@@ -303,15 +329,15 @@ void Interpreter::callBuiltinFunction(const char* func, int r1, int r2) {
 
   //clear args before next function call
   fArgs.clear();
-  if (func == "libc.malloc") {
+  if (!strcmp(func, "libc.malloc")) {
     frames[frame].vars[r1] = heapAlloc(args[0]);
-  } else if (func == "libc.free") {
+  } else if (!strcmp(func, "libc.free")) {
     heapFree(args[0]);
   }
   delete args;
 }
 
-bool Interpreter::step(void (*print)(const char*), bool debug, bool verbose) {
+bool Interpreter::doStep(void (*print)(const char*), bool debug, bool verbose) {
   if (frames[frame].ip < 0 || frames[frame].ip > frames[frame].func->codeLen) {
     frames[frame].ip = -1;
     return false;
@@ -460,7 +486,7 @@ bool Interpreter::step(void (*print)(const char*), bool debug, bool verbose) {
       }
       break;
     case OpCodeI::FUNC_ARGS:
-      addArgs(inst[i].num1, inst[i].num2, inst[i].num3);
+      addArgs(inst[i].num1, inst[i].num2, inst[i].num3, debug, verbose);
       break;
     case OpCodeI::RETURN:
       instPointer = returnFunction(inst[i].num1, inst[i].num2);
@@ -510,4 +536,12 @@ bool Interpreter::step(void (*print)(const char*), bool debug, bool verbose) {
   frames[frame].ip = instPointer;
 
   return true;
+}
+
+bool Interpreter::step(void (*print)(const char*), bool debug, bool verbose) {
+  bool rslt = doStep(print, debug, verbose);
+  if (rslt == false) {
+    valid = false;
+  }
+  return rslt;
 }

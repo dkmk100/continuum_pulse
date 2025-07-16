@@ -1,5 +1,6 @@
 #ifndef OPCODES_HPP
 #define OPCODES_HPP
+#include <cstring>
 
 enum class OpCodeI : unsigned char;
 
@@ -18,6 +19,9 @@ struct BytecodeInst {
   int num1;
   int num2;
   int num3;
+  BytecodeInst(){
+    //will be in invalid state, oh well
+  }
   BytecodeInst(OpCodeI opCode, PrimitiveType type, int num1 = -1, int num2 = -1, int num3 = -1) {
     this->opCode = opCode;
     this->type = type;
@@ -39,6 +43,11 @@ struct BytecodeFunc {
   BytecodeInst* code;
   int args;
   const char* name;
+
+  BytecodeFunc(){
+    //will be in invalid state, oops
+  }
+
   BytecodeFunc(int codeLen, BytecodeInst* code, int args, const char* name) {
     this->codeLen = codeLen;
     this->code = code;
@@ -56,15 +65,44 @@ public:
   int stringsCount;
   const char** strings;
 
+  bool dynamic;
+
+  //todo: track if valid
+
   BytecodeProgram() {
   }
-  BytecodeProgram(int funcsCount, BytecodeFunc* funcs, int funcTargetsCount, const char** funcTargets, int stringsCount, const char** strings) {
+  BytecodeProgram(int funcsCount, BytecodeFunc* funcs, int funcTargetsCount, const char** funcTargets, int stringsCount, const char** strings, bool dynamic) {
     this->funcsCount = funcsCount;
     this->funcs = funcs;
     this->funcTargetsCount = funcTargetsCount;
     this->funcTargets = funcTargets;
     this->stringsCount = stringsCount;
     this->strings = strings;
+    this->dynamic = dynamic;
+  }
+
+  inline void deleteRecursive(bool deleteText){
+    for(int i=0;i<funcsCount;i++){
+      delete funcs[i].code;
+      if(deleteText){
+        delete funcs[i].name;
+      }
+    }
+    delete funcs;
+
+    if(deleteText){
+      for(int i=0;i<funcTargetsCount;i++){
+        delete funcTargets[i];
+      }
+    }
+    delete funcTargets;
+
+    if(deleteText){
+      for(int i=0;i<stringsCount;i++){
+        delete strings[i];
+      }
+    }
+    delete strings;
   }
 
   inline const char* getFuncTarget(int id) const {
@@ -76,7 +114,7 @@ public:
 
   inline BytecodeFunc* getFunc(const char* name) const {
     for (int i = 0; i < funcsCount; i++) {
-      if (funcs[i].name == name) {
+      if (!strcmp(funcs[i].name, name)) {
         return funcs + i;
       }
     }
@@ -128,6 +166,9 @@ enum class OpCodeI : unsigned char {
   MOVE_TO,
   MOVE_FROM,
   PTR_INC,
+
+  //string data operations
+  STR_CHAR_PTR, STR_LEN, 
 
   //function call for a builtin function
   CALL_BUILTIN

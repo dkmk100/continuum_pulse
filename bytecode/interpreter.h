@@ -1,5 +1,6 @@
 #ifndef INTERPRETER_HPP
 #define INTERPRETER_HPP
+#include <cstring>
 #include "opcodes.h"
 #include "list.h"
 
@@ -41,7 +42,7 @@ private:
   List<int> labelIds;
   List<int> labelLocations;
 
-  void addArgs(int a1, int a2, int a3);
+  void addArgs(int a1, int a2, int a3, bool, bool);
   int callFunction(BytecodeFunc* func, int r1, int r2);
   int returnFunction(int r1, int r2);
   int heapAlloc(int count);
@@ -72,6 +73,8 @@ private:
   int a1, a2, a3;
   
   bool valid = false;
+
+  bool doStep(void (*print)(const char*), bool debug, bool verbose);
 
 public:
   Interpreter(BuiltinFunc* builtinFuncs, int builtinFuncsCount) {
@@ -108,7 +111,6 @@ public:
     begin(program);
     while (frames[frame].ip < frames[frame].func->codeLen) {
       if(!step(print, debug, verbose)){
-        valid = false;
         return;
       }
     }

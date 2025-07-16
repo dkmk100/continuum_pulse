@@ -219,7 +219,7 @@ inline void CreateDefaultProgram(BytecodeProgram& program) {
 
 
   program = {
-    funcsCount, funcs, funcTargetsCount, funcTargets, stringsCount, strings
+    funcsCount, funcs, funcTargetsCount, funcTargets, stringsCount, strings, false
   };
 }
 

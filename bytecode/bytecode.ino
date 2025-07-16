@@ -108,7 +108,7 @@ BytecodeProgram program;
 bool programLoaded = false;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial) {
     delay(10);
   }
@@ -141,27 +141,31 @@ void setup() {
   usb_msc.setUnitReady(true);
 
   Serial.println(F("begin usb mount"));
-  delay(200);
+  Serial.flush();
 
-  usb_msc.begin();
+  Serial.end();
+  usb_msc.begin();//important part
+  Serial.begin(115200);
+  while (!Serial) {
+    //CircuitPlayground.setPixelColor(0, 255, 0, 0);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(50);
+    //CircuitPlayground.setPixelColor(0, 0, 0, 0);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(50);
+  }
 
   Serial.println(F("begin usb remount"));
-  delay(200);
+  Serial.flush();
 
   // If already enumerated, additional class driverr begin() e.g msc, hid, midi won't take effect until re-enumeration
   if (TinyUSBDevice.mounted()) {
     Serial.println("full remount required");
     Serial.flush();
-    delay(200);
-    //weird serial shuffle might work maybe?!?!
-    //WTF is going on
-    Serial.end();
-    delay(25);
+    delay(50);
     TinyUSBDevice.detach();
-    delay(25);
+    delay(50);
     TinyUSBDevice.attach();
-    delay(25);
-    Serial.begin(9600);
   }
   else{
     TinyUSBDevice.attach();
@@ -171,10 +175,10 @@ void setup() {
   while (!Serial) {
     //CircuitPlayground.setPixelColor(0, 255, 0, 0);
     digitalWrite(LED_BUILTIN, HIGH);
-    delay(100);
+    delay(250);
     //CircuitPlayground.setPixelColor(0, 0, 0, 0);
     digitalWrite(LED_BUILTIN, LOW);
-    delay(100);
+    delay(250);
   }
 
   Serial.println(F("begin file system mount"));
@@ -208,19 +212,24 @@ void LoadDefaultProgram(BytecodeProgram& program) {
   programLoaded = true;
 }
 
-void LoadProgram(BytecodeProgram& program, InStream& stream) {
+bool LoadProgram(BytecodeProgram& program, InStream& stream) {
   Serial.println("Loading code file...");
   BytecodeReader reader;
-  reader.readCode(program, stream);
+  bool success = reader.readCode(program, stream);
   Serial.println("Loaded code file");
   Serial.print("Free memory: ");
   printFreeMemory();
-  programLoaded = true;
+  programLoaded = success;
+  return success;
 }
 
 void RunProgram(const BytecodeProgram& program) {
   Serial.println(F("Initializing interpreter..."));
   interpreter.begin(program);
+  Serial.print("functions count: ");
+  Serial.println(program.funcsCount);
+  Serial.print("entrypoint: ");
+  Serial.println(program.entryPoint()->name);
   Serial.print("Free memory: ");
   printFreeMemory();
   Serial.println(F("Running program..."));
@@ -251,33 +260,7 @@ void fileStuff() {
         Serial.println(name);
 
         InStream stream(20, *readFile);
-        LoadProgram(program, stream);
-
-        //RunProgram(program);
-
-        /*
-        int lineSize = 16;
-        InStream stream(lineSize, &readFile);
-        int num = 0;
-        while (stream.advance(num)) {
-          char buff[lineSize + 1];
-          char* ch = stream.read();
-          num = stream.getCount();
-          for (int i = 0; i < num; i++) {
-            buff[i] = ch[i];
-            if (buff[i] == 0) {
-              buff[i] = 126;
-            }
-            else if(buff[i] > 126){
-              buff[i] = 35;
-            }
-          }
-          buff[num] = 0;
-          Serial.print(buff);
-          Serial.println();
-          delay(100);
-        }
-        */
+        bool loaded = LoadProgram(program, stream);
       }
     }
     file.close();
@@ -299,24 +282,35 @@ void loop() {
 
   if (fs_changed) {
     fs_changed = false;
+    Serial.println("file system changed");
   }
 
+  ///*
   if (!programLoaded) {
     if (!root.open("/")) {
       //Serial.println("open root failed");
     } else {
       //fileStuff();
+      //Serial.println("open root");
       root.close();
     }
+    delay(1000);
+  }
+  //*/
+
+  ///*
+  //Serial.println("pre interpreter");
+
+  if(programLoaded && CircuitPlayground.leftButton()){
+    programLoaded = false;
+    RunProgram(program);
   }
 
   long startTime = millis();
-  if (startTime < resumeTime) {
-    return;
-  }
-  while (startTime - 10 < millis() && interpreter.ready()) {
+  while (startTime - 10 < millis() && startTime >= resumeTime && interpreter.ready()) {
     interpreter.step(&print, false, false);
   }
+  //*/
 }
 
 // Callback invoked when received READ10 command.
