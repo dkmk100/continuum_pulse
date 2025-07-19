@@ -12,22 +12,23 @@
 #define VERBOSE_DEBUG_DISPLAY false
 #define VERBOSE_DEBUG_BUTTONS false
 #define VERBOSE_DEBUG_ACCEL false
+const unsigned int baudRate = 115200;
 
 #define WAIT_FOR_SERIAL true
 
-#define BUTTONS_PULLUP true
+#define BUTTONS_PULLUP true  //true for internal
 #define HAS_TEMP_SENSOR false
-#define HAS_SPEAKER true
+#define HAS_SPEAKER false
 #define HAS_MOTOR false
-#define HAS_ACCEL true
+#define HAS_ACCEL false
 #define FIX_ACCEL false
 
-#define USE_CPX true
-#define USE_RP2040 false
+#define USE_CPX false
+#define USE_RP2040 true
 
-#define CAN_SLEEP true
+#define CAN_SLEEP false
 
-#define TWO_BUTTON_MODE true
+#define TWO_BUTTON_MODE false
 
 #define TAP_ON_RELEASE false
 
@@ -37,8 +38,10 @@ const unsigned int clockDelay = 15;
 //const unsigned char advancePin = A7;
 //const unsigned char selectPin = A6;
 
-const unsigned char advancePin = 13;
-const unsigned char selectPin = 14;
+const unsigned char backPin = 11;
+const unsigned char advancePin = 12;
+const unsigned char selectPin = 13;
+
 
 //const unsigned char motor = A1;
 const unsigned char speaker = A0;
@@ -135,7 +138,7 @@ bool getSelect() {
 #endif
 
 template<bool (*buttonFuncs[3])()>
-struct WatchButtonManager : public ButtonManager<3, TAP_ON_RELEASE, buttonFuncs>{
+struct WatchButtonManager : public ButtonManager<3, TAP_ON_RELEASE, buttonFuncs> {
   const int advanceId = 0;
   const int selectId = 1;
   const int backId = 2;
@@ -143,37 +146,37 @@ struct WatchButtonManager : public ButtonManager<3, TAP_ON_RELEASE, buttonFuncs>
   unsigned long advanceStarted = 0;
   const long advanceTime = 1000;
 
-  void Update() override{
+  void Update() override {
     ButtonManager<3, TAP_ON_RELEASE, buttonFuncs>::Update();
-    #if TWO_BUTTON_MODE
-    if(getAdvanceTapped()){
+#if TWO_BUTTON_MODE
+    if (getAdvanceTapped()) {
       advanceStarted = millis();
     }
-    if(getAdvancePressed() && millis() > advanceStarted + advanceTime){
+    if (getAdvancePressed() && millis() > advanceStarted + advanceTime) {
       this->tapped[backId] = true;
       this->pressed[backId] = true;
       advanceStarted = millis();
     }
-    #endif
+#endif
   }
 
-  bool getAdvancePressed(){
+  bool getAdvancePressed() {
     return this->getPressed(advanceId);
   }
-  bool getSelectPressed(){
+  bool getSelectPressed() {
     return this->getPressed(selectId);
   }
-  bool getBackPressed(){
+  bool getBackPressed() {
     return this->getPressed(backId);
   }
 
-  bool getAdvanceTapped(){
+  bool getAdvanceTapped() {
     return this->getTapped(advanceId);
   }
-  bool getSelectTapped(){
+  bool getSelectTapped() {
     return this->getTapped(selectId);
   }
-  bool getBackTapped(){
+  bool getBackTapped() {
     return this->getTapped(backId);
   }
 };
@@ -184,7 +187,7 @@ OLED_Display* oled_display = &actual_display;
 MenuManager screenManager(oled_display);
 OLED_CLASS& OLED = oled_display->getOled();
 
-bool (*watchButtons[3])() = {getAdvance, getSelect, getBack};
+bool (*watchButtons[3])() = { getAdvance, getSelect, getBack };
 WatchButtonManager<watchButtons> buttons;
 
 //declare everything used in custom menu types
@@ -597,7 +600,7 @@ SliderScreen* stepScreen = new SliderScreen(screenManager, stepSize);
 SliderScreen* tempLevelScreen = new SliderScreen(screenManager, tempLevel);
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(baudRate);
   if (WAIT_FOR_SERIAL) {
     while (!Serial) {
       delay(10);
@@ -612,20 +615,27 @@ void setup() {
   //pinMode(tempSensor,INPUT);
   //pinMode(motor,OUTPUT);
 
-#if TWO_BUTTON_MODE && !USE_CPX
-  pinMode(advancePin, INPUT_PULLUP);
-  pinMode(selectPin, INPUT_PULLUP);
-#endif
-
-#if !TWO_BUTTON_MODE
-  pinMode(backPin, INPUT);
-  pinMode(advancePin, INPUT);
-  pinMode(selectPin, INPUT);
-
-  digitalWrite(backPin, HIGH);
-  digitalWrite(advancePin, HIGH);
-  digitalWrite(selectPin, HIGH);
-#endif
+  if (!USE_CPX) {
+    if (TWO_BUTTON_MODE) {
+      if (BUTTONS_PULLUP) {
+        pinMode(advancePin, INPUT_PULLUP);
+        pinMode(selectPin, INPUT_PULLUP);
+      } else {
+        pinMode(advancePin, INPUT);
+        pinMode(selectPin, INPUT);
+      }
+    } else {
+      if (BUTTONS_PULLUP) {
+        pinMode(backPin, INPUT_PULLUP);
+        pinMode(advancePin, INPUT_PULLUP);
+        pinMode(selectPin, INPUT_PULLUP);
+      } else {
+        pinMode(backPin, INPUT);
+        pinMode(advancePin, INPUT);
+        pinMode(selectPin, INPUT);
+      }
+    }
+  }
 
   delay(500);
   oled_display->setup();
@@ -779,7 +789,6 @@ void loop() {
 #if VERBOSE_DEBUG_ACCEL
   printMotion(ax, ay, az, aTot, aTotPedometer);
 #endif
-
   float aStepThreshold = 1.2;
 
   //button setup:
@@ -792,6 +801,12 @@ void loop() {
   bool backTapped = buttons.getBackTapped();
   bool advanceTapped = buttons.getAdvanceTapped();
   bool selectTapped = buttons.getSelectTapped();
+
+  #if VERBOSE_DEBUG_BUTTONS
+  Serial.print(backPressed);
+  Serial.print(advancePressed);
+  Serial.print(selectPressed);
+  #endif
 
   if (millis() > lastWater + getWaterDelay() * 1000 && doWaterReminders->active) {
     doWaterReminder();
@@ -1053,16 +1068,12 @@ void printClockFace(int hours, int minutes, int seconds, int mil) {
   drawEvenCircle(94 - notchPos, 31, 1);
 
   if (mil < 500) {
-    int rSize = 12;
-    int rJmp = 2;
-    int iters = rSize / rJmp;
-    for (int i = 0; i < iters; i++) {
-      OLED.drawRect(i * rJmp, 63 - rSize + i * rJmp, rSize - i * rJmp, rSize - i * rJmp, OLED_WHITE);
-    }
+    int rSize = 8;
+    OLED.fillRect(0,63-rSize,rSize,rSize, OLED_WHITE);
   }
 
-  OLED.setCursor(99, 45);
-  OLED.setTextSize(2);
+  OLED.setCursor(102, 50);
+  OLED.setTextSize(1);
   if (pm) {
     OLED.print("PM");
   } else {

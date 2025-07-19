@@ -4,12 +4,13 @@
 #ifndef OLED_MENU_hpp
 #define OLED_MENU_hpp
 
+//uncomment one of these if not specifying externally
+//#define USE_SSD1306
+#define USE_SH1106
+
 #define OLED_RESET -1
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT  64
-
-#define USE_SSD1306
-//#define USE_SH1106
 
 #include "menu.h"
 #include <Adafruit_GFX.h>       //  Generic graphics library: fonts, lines, effects
