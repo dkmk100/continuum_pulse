@@ -1,26 +1,35 @@
-#include <Adafruit_TinyUSB.h>
-
-#include <Adafruit_CircuitPlayground.h>
+//#include <Adafruit_CircuitPlayground.h>
 
 #include "opcodes.h"
 #include "interpreter.h"
 #include "code.h"
 #include "bytecode_reader.h"
 
-#include "SPI.h"
-#include "SdFat_Adafruit_Fork.h"
-#include "Adafruit_SPIFlash.h"
+#include <SPI.h>
+#include <SdFat_Adafruit_Fork.h>
+#include <Adafruit_TinyUSB.h>
+//#include "Adafruit_SPIFlash.h"
 
-// for flashTransport definition
+#define EXTERNAL_SD
+#define SDCARD_CS 17
+//#define BUILTIN_FLASH
+
+#define LEFT_PIN 11
+#define RIGHT_PIN 13
+const bool debug = false;
+const bool verbose = false;
+
+#ifdef BUILTIN_FLASH
 #include "flash_config.h"
-
-#include "Arduino.h"
-
 Adafruit_SPIFlash flash(&flashTransport);
-
-// file system object from SdFat
 FatVolume fatfs;
 
+#endif
+#ifdef EXTERNAL_SD
+#define SD_CONFIG SdSpiConfig(SDCARD_CS, SHARED_SPI, SD_SCK_MHZ(50))
+SdFat sd;
+
+#endif
 FatFile root;
 FatFile file;
 
@@ -61,23 +70,29 @@ void printFreeMemory() {
 }
 
 int leftButton(int* dat) {
+#ifdef LEFT_PIN
+  return !digitalRead(LEFT_PIN);
+#else
   return CircuitPlayground.leftButton();
-  //return false;
+#endif
 }
 
 int rightButton(int* dat) {
+#ifdef RIGHT_PIN
+  return !digitalRead(LEFT_PIN);
+#else
   return CircuitPlayground.rightButton();
-  //return false;
+#endif
 }
 
 int setPixelColor(int* dat) {
-  CircuitPlayground.setPixelColor(dat[0], dat[1], dat[2], dat[3]);
-  /*
+  //CircuitPlayground.setPixelColor(dat[0], dat[1], dat[2], dat[3]);
+  ///*
   for (int i = 0; i < 4; i++) {
     Serial.print(dat[0]);
   }
   Serial.println();
-  */
+  //*/
   return 0;
 }
 
@@ -114,16 +129,37 @@ void setup() {
   }
 
   pinMode(LED_BUILTIN, OUTPUT);
+#ifdef LEFT_PIN
+  pinMode(LEFT_PIN, INPUT_PULLUP);
+#endif
+#ifdef RIGHT_PIN
+  pinMode(RIGHT_PIN, INPUT_PULLUP);
+#endif
 
   Serial.print("Pre-init free memory: ");
   printFreeMemory();
 
-  CircuitPlayground.begin();
+  //CircuitPlayground.begin();
 
+#ifdef BUILTIN_FLASH
   Serial.println(F("begin flash initialization"));
   delay(200);
-
   flash.begin();
+#endif
+#ifdef EXTERNAL_SD
+  if (!sd.begin(SD_CONFIG)) {
+    sd.initErrorHalt(&Serial);
+    Serial.println("initialization failed. Things to check:");
+    Serial.println("- is a card inserted?");
+    Serial.println("- is your wiring correct?");
+    Serial.println("- did you change the SDCARD_CS or SDIO pin to match your shield or module?");
+    fs_formatted = false;
+  } else {
+    fs_formatted = true;
+  }
+
+#endif
+
 
   Serial.println(F("begin usb initialization"));
   delay(200);
@@ -134,11 +170,18 @@ void setup() {
   // Set callback
   usb_msc.setReadWriteCallback(msc_read_cb, msc_write_cb, msc_flush_cb);
 
+#ifdef BUILTIN_FLASH
+  int capacity = flash.size() / 512;
+#endif
+#ifdef EXTERNAL_SD
+  int capacity = sd.card()->sectorCount();
+#endif
+
   // Set disk size, block size should be 512 regardless of spi flash page size
-  usb_msc.setCapacity(flash.size() / 512, 512);
+  usb_msc.setCapacity(capacity, 512);
 
   // MSC is ready for read/write
-  usb_msc.setUnitReady(true);
+  usb_msc.setUnitReady(false);
 
   Serial.println(F("begin usb mount"));
   Serial.flush();
@@ -183,8 +226,11 @@ void setup() {
   Serial.println(F("begin file system mount"));
   delay(200);
 
+#ifdef BUILTIN_FLASH
   // Init file system on the flash
   fs_formatted = fatfs.begin(&flash);
+#endif
+
 
   Serial.println(F("file system mounted"));
 
@@ -268,10 +314,11 @@ void fileStuff() {
 
 void loop() {
   if (!fs_formatted) {
+#ifdef BUILTIN_FLASH
     fs_formatted = fatfs.begin(&flash);
-
+#endif
     if (!fs_formatted) {
-      Serial.println(F("Failed to init files system, flash may not be formatted"));
+      Serial.println(F("Failed to init files system, may not be formatted"));
       Serial.println();
 
       delay(1000);
@@ -300,25 +347,27 @@ void loop() {
   ///*
   //Serial.println("pre interpreter");
 
-  if (programLoaded && CircuitPlayground.leftButton()) {
+  if (programLoaded && leftButton(nullptr)) {
     programLoaded = false;
     RunProgram(program);
   }
 
   if (interpreter.ready()) {
-    //Serial.println("begin interpreter brust");
+    if (debug) {
+      Serial.println("begin interpreter brust");
+    }
     long startTime = millis();
     long timeout = 1000;
     while (millis() - timeout < startTime && millis() >= resumeTime && interpreter.ready()) {
-      interpreter.step(&print, false, false);
+      interpreter.step(&print, debug, verbose);
     }
-    /*
-    if (interpreter.ready()) {
-      Serial.println("end interpreter burst");
-    } else {
-      Serial.println("interpreter halted!");
+    if (debug) {
+      if (interpreter.ready()) {
+        Serial.println("end interpreter burst");
+      } else {
+        Serial.println("interpreter halted!");
+      }
     }
-    //*/
   }
 
   //*/
@@ -328,9 +377,15 @@ void loop() {
 // Copy disk's data to buffer (up to bufsize) and
 // return number of copied bytes (must be multiple of block size)
 int32_t msc_read_cb(uint32_t lba, void* buffer, uint32_t bufsize) {
-  // Note: SPIFLash Block API: readBlocks/writeBlocks/syncBlocks
-  // already include 4K sector caching internally. We don't need to cache it, yahhhh!!
-  return flash.readBlocks(lba, (uint8_t*)buffer, bufsize / 512) ? bufsize : -1;
+// Note: SPIFLash Block API: readBlocks/writeBlocks/syncBlocks
+// already include 4K sector caching internally. We don't need to cache it, yahhhh!!
+#ifdef BUILTIN_FLASH
+  bool rc = flash.readBlocks(lba, (uint8_t*)buffer, bufsize / 512);
+#endif
+#ifdef EXTERNAL_SD
+  bool rc = sd.card()->readSectors(lba, (uint8_t*)buffer, bufsize / 512);
+#endif
+  return rc ? bufsize : -1;
 }
 
 // Callback invoked when received WRITE10 command.
@@ -341,19 +396,31 @@ int32_t msc_write_cb(uint32_t lba, uint8_t* buffer, uint32_t bufsize) {
   digitalWrite(LED_BUILTIN, HIGH);
 #endif
 
+#ifdef BUILTIN_FLASH
   // Note: SPIFLash Block API: readBlocks/writeBlocks/syncBlocks
   // already include 4K sector caching internally. We don't need to cache it, yahhhh!!
-  return flash.writeBlocks(lba, buffer, bufsize / 512) ? bufsize : -1;
+  bool rc = flash.writeBlocks(lba, buffer, bufsize / 512) ? bufsize : -1;
+#endif
+#ifdef EXTERNAL_SD
+  bool rc = sd.card()->writeSectors(lba, buffer, bufsize / 512);
+#endif
+
+  return rc ? bufsize : -1;
 }
 
 // Callback invoked when WRITE10 command is completed (status received and accepted by host).
 // used to flush any pending cache.
 void msc_flush_cb(void) {
+#ifdef BUILTIN_FLASH
   // sync with flash
   flash.syncBlocks();
-
   // clear file system's cache to force refresh
   fatfs.cacheClear();
+#endif
+#ifdef EXTERNAL_SD
+  sd.card()->syncDevice();
+  sd.cacheClear();  // clear file system's cache to force refresh
+#endif
 
   fs_changed = true;
 

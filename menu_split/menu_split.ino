@@ -32,15 +32,15 @@ const unsigned int baudRate = 115200;
 
 #define TAP_ON_RELEASE false
 
-const unsigned int clockDelay = 12;
+const unsigned int clockDelay = 15;
 
 //const unsigned char backPin = A2;
 //const unsigned char advancePin = A7;
 //const unsigned char selectPin = A6;
 
-const unsigned char backPin = 21;
-const unsigned char advancePin = 20;
-const unsigned char selectPin = 19;
+const unsigned char backPin = 11;
+const unsigned char advancePin = 12;
+const unsigned char selectPin = 13;
 
 
 //const unsigned char motor = A1;
