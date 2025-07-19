@@ -111,7 +111,7 @@ int Interpreter::returnFunction(int r1, int r2, bool debug, bool verbose) {
   }
 
   frame = frame - 1;
-  stackRegCount -= 256;
+  stackRegCount -= maxVar;
 
   if (oldFRet[0] >= 0) {
     frames[frame].vars[oldFRet[0]] = returns[0];
@@ -147,6 +147,7 @@ int getSizeFor(PrimitiveType type) {
   }
 }
 
+//TODO just make a heap class...
 int Interpreter::heapAlloc(int count) {
   int pos = heapEnd;
   heapEnd += count;
@@ -160,7 +161,7 @@ int Interpreter::heapAlloc(int count) {
 }
 
 void Interpreter::heapFree(int address) {
-  //LOL, just leaking memory
+  //TODO actually add proper heap allocation/free system
 }
 
 void Interpreter::resizeHeap(int newSize) {
@@ -212,11 +213,11 @@ int Interpreter::getLabelPos(int id) {
 
 void Interpreter::addLabel(int id, int pos, bool debug, bool verbose) {
   if (getLabelPos(id) < 0) {
-    if(verbose){
-    Serial.print("adding label: ");
-    Serial.print(id);
-    Serial.print(" at ");
-    Serial.println(pos);
+    if (verbose) {
+      Serial.print("adding label: ");
+      Serial.print(id);
+      Serial.print(" at ");
+      Serial.println(pos);
     }
     labelIds.add(id);
     labelLocations.add(pos);
@@ -226,7 +227,7 @@ void Interpreter::addLabel(int id, int pos, bool debug, bool verbose) {
 int Interpreter::getJumpTarget(int id, int startPos, bool debug, bool verbose) {
   int label = getLabelPos(id);
   if (label >= 0) {
-    if(verbose){
+    if (verbose) {
       Serial.print("found label ");
       Serial.print(id);
       Serial.print(" at ");
@@ -257,16 +258,16 @@ int Interpreter::getJumpTarget(int id, int startPos, bool debug, bool verbose) {
   return -1;
 }
 
-/*
+
 int Interpreter::readFromAddress() {
   if (!addressValid) {
     return 0;
   }
   addressValid = false;
-  int ptr = frames[frame].vars[address.Item1];
+  int ptr = frames[frame].vars[a1];
   int offset = calcOffset();
   int scale = getSizeFor((PrimitiveType)a3);
-  if (ptr < stackRegCount + 256) {
+  if (ptr < stackRegCount + maxVar) {
     //a register value
     if (offset != 0) {
       return 0;
@@ -274,84 +275,110 @@ int Interpreter::readFromAddress() {
 
     if (ptr < stackRegCount) {
       int i = ptr;
-      foreach (var v in stack.Reverse()) {
-        int[] sVars = v.Item3;
-        if (i < 256) {
+      for (int j = frame; j >= 0; j--) {
+        int* sVars = frames[j].vars;
+        if (i < maxVar) {
           return sVars[i];
         } else {
-          i -= 256;
+          i -= maxVar;
         }
       }
       return 0;
     } else {
-      return vars[ptr - stackRegCount];
+      return frames[frame].vars[ptr - stackRegCount];
     }
   } else if (ptr >= stackSize) {
     int heapPtr = (ptr - stackSize) + offset * scale;
     if (heapPtr < heapEnd) {
       return heap[heapPtr];
     } else {
-      logger.Error("Heap overflow at: " + ptr + ", " + offset + ", " + scale);
-      validState = false;
+      Serial.print("Heap overflow at: ");
+      Serial.print(ptr);
+      Serial.print(", ");
+      Serial.print(offset);
+      Serial.print(", ");
+      Serial.println(scale);
+      valid = false;
       return 0;
     }
   } else {
-    logger.Error("Illegal address at: " + ptr + ", " + offset + ", " + scale);
-    validState = false;
+    Serial.print("Illegal address at: ");
+    Serial.print(ptr);
+    Serial.print(", ");
+    Serial.print(offset);
+    Serial.print(", ");
+    Serial.println(scale);
+    valid = false;
     return 0;
   }
 }
-void WriteToAddress(int val, Logger logger) {
+void Interpreter::writeToAddress(int val) {
   if (!addressValid) {
-    logger.Error("Address not set");
-    validState = false;
+    Serial.println("Address not set");
+    valid = false;
     return;
   }
   addressValid = false;
-  int ptr = vars[address.Item1];
-  int offset = CalcOffset();
-  int scale = address.Item3;
-  if (ptr < stackRegCount + vars.Length) {
+  int ptr = frames[frame].vars[a1];
+  int offset = calcOffset();
+  int scale = getSizeFor((PrimitiveType)a3);
+  if (ptr < stackRegCount + maxVar) {
     //a register value
     if (offset != 0) {
-      logger.Error("Illegal offset at: " + ptr + ", " + offset + ", " + scale);
-      validState = false;
+      Serial.print("Illegal offset at: ");
+      Serial.print(ptr);
+      Serial.print(", ");
+      Serial.print(offset);
+      Serial.print(", ");
+      Serial.println(scale);
+      valid = false;
       return;
     }
 
     if (ptr < stackRegCount) {
       int i = ptr;
-      foreach (var v in stack.Reverse()) {
-        int[] sVars = v.Item3;
-        if (i < sVars.Length) {
+      for (int j = frame; j >= 0; j--) {
+        int* sVars = frames[j].vars;
+        if (i < maxVar) {
           sVars[i] = val;
           break;
         } else {
-          i -= sVars.Length;
+          i -= maxVar;
         }
       }
     } else {
-      vars[ptr - stackRegCount] = val;
+      frames[frame].vars[ptr - stackRegCount] = val;
     }
   } else if (ptr >= stackSize) {
     int heapPtr = (ptr - stackSize) + offset * scale;
     if (heapPtr < heapEnd) {
       heap[heapPtr] = val;
     } else {
-      logger.Error("Heap overflow at: " + ptr + ", " + offset + ", " + scale);
+      Serial.print("Heap overflow at: ");
+      Serial.print(ptr);
+      Serial.print(", ");
+      Serial.print(offset);
+      Serial.print(", ");
+      Serial.println(scale);
+      valid = false;
+      return;
     }
   } else {
-    logger.Error("Illegal address at: " + ptr + ", " + offset + ", " + scale);
-    validState = false;
+    Serial.print("Illegal address at: ");
+    Serial.print(ptr);
+    Serial.print(", ");
+    Serial.print(offset);
+    Serial.print(", ");
+    Serial.println(scale);
+    valid = false;
     return;
   }
 }
 
-int GetLocalAddress(int local) {
+int Interpreter::getLocalAddress(int local) {
   return local + stackRegCount;
 }
 
-*/
 
 bool Interpreter::isBuiltinFunction(const char* func) {
   return !strcmp(func, "libc.malloc") || !strcmp(func, "libc.free");
@@ -455,29 +482,28 @@ bool Interpreter::doStep(void (*print)(const char*), bool debug, bool verbose) {
       vars[inst[i].num1] = ToInt(ToBool(vars[inst[i].num1]) && ToBool(vars[inst[i].num2]));
       break;
 
-      /*
+      
     case OpCodeI::ADDR_OF:
-      vars[inst[i].num1] = GetLocalAddress(inst[i].num2);
+      vars[inst[i].num1] = getLocalAddress(inst[i].num2);
       break;
     case OpCodeI::PTR_INC:
       //TODO throw error when doing this with non-heap variables
-      vars[inst[i].num1] += vars[inst[i].num2] * GetSizeFor(inst[i].type);
+      vars[inst[i].num1] += vars[inst[i].num2] * getSizeFor(inst[i].type);
       break;
     case OpCodeI::CALC_ADDR_CONST:
-      SetConstAddress(inst[i].num1, inst[i].num2, inst[i].num3);
+      setConstAddress(inst[i].num1, inst[i].num2, inst[i].num3);
       break;
     case OpCodeI::CALC_ADDR_VAR:
-      SetVarAddress(inst[i].num1, inst[i].num2, inst[i].num3);
+      setVarAddress(inst[i].num1, inst[i].num2, inst[i].num3);
       break;
     case OpCodeI::MOVE_TO:
       val = vars[inst[i].num1];
-      WriteToAddress(val, logger);
+      writeToAddress(val);
       break;
     case OpCodeI::MOVE_FROM:
-      val = ReadFromAddress(logger);
+      val = readFromAddress();
       vars[inst[i].num1] = val;
       break;
-    */
 
     case OpCodeI::FUNC_CALL:
       {
