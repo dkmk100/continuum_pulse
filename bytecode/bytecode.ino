@@ -144,7 +144,7 @@ void setup() {
   Serial.flush();
 
   Serial.end();
-  usb_msc.begin();//important part
+  usb_msc.begin();  //important part
   Serial.begin(115200);
   while (!Serial) {
     //CircuitPlayground.setPixelColor(0, 255, 0, 0);
@@ -166,8 +166,7 @@ void setup() {
     TinyUSBDevice.detach();
     delay(50);
     TinyUSBDevice.attach();
-  }
-  else{
+  } else {
     TinyUSBDevice.attach();
   }
 
@@ -285,8 +284,8 @@ void loop() {
     Serial.println("file system changed");
   }
 
-  ///*
-  if (!programLoaded) {
+  /*
+  if (!programLoaded && !interpreter.ready()) {
     if (!root.open("/")) {
       //Serial.println("open root failed");
     } else {
@@ -301,15 +300,27 @@ void loop() {
   ///*
   //Serial.println("pre interpreter");
 
-  if(programLoaded && CircuitPlayground.leftButton()){
+  if (programLoaded && CircuitPlayground.leftButton()) {
     programLoaded = false;
     RunProgram(program);
   }
 
-  long startTime = millis();
-  while (startTime - 10 < millis() && startTime >= resumeTime && interpreter.ready()) {
-    interpreter.step(&print, false, false);
+  if (interpreter.ready()) {
+    //Serial.println("begin interpreter brust");
+    long startTime = millis();
+    long timeout = 1000;
+    while (millis() - timeout < startTime && millis() >= resumeTime && interpreter.ready()) {
+      interpreter.step(&print, false, false);
+    }
+    /*
+    if (interpreter.ready()) {
+      Serial.println("end interpreter burst");
+    } else {
+      Serial.println("interpreter halted!");
+    }
+    //*/
   }
+
   //*/
 }
 

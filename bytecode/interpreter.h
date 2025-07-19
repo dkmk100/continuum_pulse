@@ -6,7 +6,7 @@
 
 //TODO optimize variable storage
 const int maxFrame = 15;
-const int maxVar = 12;
+const int maxVar = 16;
 const int startHeap = 256;
 
 struct StackFrame {
@@ -44,7 +44,7 @@ private:
 
   void addArgs(int a1, int a2, int a3, bool, bool);
   int callFunction(BytecodeFunc* func, int r1, int r2);
-  int returnFunction(int r1, int r2);
+  int returnFunction(int r1, int r2, bool, bool);
   int heapAlloc(int count);
   void heapFree(int address);
   void resizeHeap(int newSize);
@@ -57,8 +57,8 @@ private:
   bool isBuiltinFunction(const char* func);
   void callBuiltinFunction(const char* func, int r1, int r2);
 
-  int getJumpTarget(int id, int startPos);
-  void addLabel(int id, int pos);
+  int getJumpTarget(int id, int startPos, bool, bool);
+  void addLabel(int id, int pos, bool, bool);
   int getLabelPos(int id);
 
   int stackSize = maxFrame * maxVar;

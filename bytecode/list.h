@@ -18,9 +18,10 @@ private:
         dynamic = true;
       }
       arr = new T[newSize];
-      for (int i = 0; i < size; i++) {
+      for (int i = 0; i < count; i++) {
         arr[i] = old[i];
       }
+      size = newSize;
       if (dynamic) {
         delete old;
       }

@@ -1,3 +1,4 @@
+#include "Print.h"
 #include "interpreter.h"
 
 #include <cstring>
@@ -88,17 +89,17 @@ int Interpreter::callFunction(BytecodeFunc* func, int r1, int r2) {
   return 0;
 }
 
-int Interpreter::returnFunction(int r1, int r2) {
+int Interpreter::returnFunction(int r1, int r2, bool debug, bool verbose) {
   //TODO check this better
   if (frame == 0) {
-    return -1;
-  }
-  if (!strcmp(frames[frame].func->name, "main")) {
+    if (debug) {
+      Serial.println("exiting last frame");
+    }
     return -1;
   }
 
   int returns[] = { 0, 0 };
-  int oldFRet[] = { 0, 0 };
+  int oldFRet[] = { -1, -1 };
 
   if (frames[frame].fRet.getCount() > 0 && frames[frame].fRet[0] >= 0) {
     returns[0] = frames[frame].vars[r1];
@@ -112,11 +113,25 @@ int Interpreter::returnFunction(int r1, int r2) {
   frame = frame - 1;
   stackRegCount -= 256;
 
-  if (oldFRet[1] >= 0) {
+  if (oldFRet[0] >= 0) {
     frames[frame].vars[oldFRet[0]] = returns[0];
+    if (debug) {
+      Serial.print("return1: ");
+      Serial.print(returns[0]);
+      Serial.print(" (");
+      Serial.println(oldFRet[0]);
+      Serial.println(")");
+    }
   }
   if (oldFRet[1] >= 0) {
     frames[frame].vars[oldFRet[1]] = returns[1];
+    if (debug) {
+      Serial.print("return2: ");
+      Serial.print(returns[1]);
+      Serial.print(" (");
+      Serial.println(oldFRet[1]);
+      Serial.println(")");
+    }
   }
 
   //return pos
@@ -195,25 +210,50 @@ int Interpreter::getLabelPos(int id) {
   return -1;
 }
 
-void Interpreter::addLabel(int id, int pos) {
+void Interpreter::addLabel(int id, int pos, bool debug, bool verbose) {
   if (getLabelPos(id) < 0) {
+    if(verbose){
+    Serial.print("adding label: ");
+    Serial.print(id);
+    Serial.print(" at ");
+    Serial.println(pos);
+    }
     labelIds.add(id);
     labelLocations.add(pos);
   }
 }
 
-int Interpreter::getJumpTarget(int id, int startPos) {
+int Interpreter::getJumpTarget(int id, int startPos, bool debug, bool verbose) {
   int label = getLabelPos(id);
-  if (label > 0) {
+  if (label >= 0) {
+    if(verbose){
+      Serial.print("found label ");
+      Serial.print(id);
+      Serial.print(" at ");
+      Serial.println(label);
+    }
     return label;
+  }
+
+  if (debug) {
+    Serial.print("searching for label: ");
+    Serial.println(id);
   }
 
   for (int i = 0; i < frames[frame].func->codeLen; i++) {
     BytecodeInst* inst = frames[frame].func->code;
     if (inst[i].opCode == OpCodeI::LABEL && inst[i].num1 == id) {
+      if (debug) {
+        Serial.print("found label at: ");
+        Serial.println(i);
+      }
       return i;
     }
   }
+
+  Serial.print("error: label not found: ");
+  Serial.println(id);
+
   return -1;
 }
 
@@ -347,9 +387,8 @@ bool Interpreter::doStep(void (*print)(const char*), bool debug, bool verbose) {
   }
 
   int i = frames[frame].ip;
-  frames[frame].ip++;
-
   int instPointer = i + 1;
+
   BytecodeInst* inst = frames[frame].func->code;
   int* vars = frames[frame].vars;
 
@@ -443,12 +482,20 @@ bool Interpreter::doStep(void (*print)(const char*), bool debug, bool verbose) {
     case OpCodeI::FUNC_CALL:
       {
         const char* name = program->getFuncTarget(inst[i].num1);
-        Serial.print("going to call func: ");
-        Serial.println(name);
+        if (debug) {
+          Serial.print("going to call func: ");
+          Serial.println(name);
+        }
         if (isBuiltinFunction(name)) {
           callBuiltinFunction(name, inst[i].num2, inst[i].num3);
         } else {
           BytecodeFunc* func = program->getFunc(name);
+          if (debug) {
+            Serial.print("func found: ");
+            Serial.print((int)func, HEX);
+            Serial.print('\t');
+            Serial.println(func->name);
+          }
           instPointer = callFunction(func, inst[i].num2, inst[i].num3);
         }
       }
@@ -489,18 +536,18 @@ bool Interpreter::doStep(void (*print)(const char*), bool debug, bool verbose) {
       addArgs(inst[i].num1, inst[i].num2, inst[i].num3, debug, verbose);
       break;
     case OpCodeI::RETURN:
-      instPointer = returnFunction(inst[i].num1, inst[i].num2);
+      instPointer = returnFunction(inst[i].num1, inst[i].num2, debug, verbose);
       break;
 
     case OpCodeI::LABEL:
-      addLabel(inst[i].num1, i);
+      addLabel(inst[i].num1, i, debug, verbose);
       break;
     case OpCodeI::JMP:
-      instPointer = getJumpTarget(inst[i].num1, i);  //perform the jump
+      instPointer = getJumpTarget(inst[i].num1, i, debug, verbose);  //perform the jump
       break;
     case OpCodeI::JMP_IF:
       if (vars[inst[i].num2] != 0) {
-        instPointer = getJumpTarget(inst[i].num1, i);  //perform the jump
+        instPointer = getJumpTarget(inst[i].num1, i, debug, verbose);  //perform the jump
       }
       break;
     case OpCodeI::PRINT_STR_CONST:
