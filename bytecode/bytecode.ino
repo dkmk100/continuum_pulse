@@ -17,6 +17,7 @@
 #define LEFT_PIN 11
 #define RIGHT_PIN 13
 const bool profile = true;
+const bool deepProfile = false;
 const bool debug = false;
 const bool verbose = false;
 
@@ -116,7 +117,6 @@ BuiltinFunc builtins[] = {
 
 void print(const char* str) {
   Serial.print(str);
-  delay(20);
 }
 
 Interpreter interpreter(builtins, numBuiltins);
@@ -366,9 +366,23 @@ void loop() {
     long trueStart = micros();
     int miniBurst = 100;
     bool b = true;
-    while (millis() - timeout < startTime) {
+    while (millis() - timeout < startTime && b) {
       for (int i = 0; i < miniBurst && startTime >= resumeTime && b; i++) {
+        int miniStart;
+        OpCodeI opcode;
+        if(deepProfile){
+          opcode = interpreter.nextInst().opCode;
+          miniStart = micros();
+        }
         b = interpreter.step(&print, debug, verbose);
+        if(deepProfile){
+          int miniEnd = micros();
+          Serial.print("~~instruction ");
+          Serial.print((int)opcode);
+          Serial.print(" took ");
+          Serial.print(miniEnd - miniStart);
+          Serial.println("micros");
+        }
       }
     }
     if (debug || profile) {

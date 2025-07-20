@@ -108,6 +108,10 @@ public:
     delete builtinCache;
   }
 
+  inline BytecodeInst nextInst(){
+    return frames[frame].func->code[frames[frame].ip];
+  }
+
   inline bool ready() {
     return valid && frames[frame].ip < frames[frame].func->codeLen;
   }
