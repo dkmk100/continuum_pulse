@@ -1,0 +1,9 @@
+183.90kb
+75.79kb
+
+(empty step function: 3456.62)
+(0.289 micros per loop)
+
+2.74, 1.49, 1.41, 1.36, ..., 0.98
+(average: 1.596)
+(626.56 micros)

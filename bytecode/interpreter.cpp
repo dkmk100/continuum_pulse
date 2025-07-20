@@ -7,10 +7,10 @@
 
 #include <Arduino.h>
 
-bool ToBool(int x) {
+inline bool ToBool(int x) {
   return x != 0;
 }
-int ToInt(bool x) {
+inline int ToInt(bool x) {
   return x ? 1 : 0;
 }
 
@@ -68,7 +68,7 @@ int Interpreter::callFunction(BytecodeFunc* func, int r1, int r2) {
   frames[frame].ip = 0;
   frames[frame].func = func;
 
-  frames[frame].fRet.clear();
+  frames[frame].fRet.fastClear();
   frames[frame].fRet.add(r1);
   frames[frame].fRet.add(r2);
 
@@ -83,7 +83,7 @@ int Interpreter::callFunction(BytecodeFunc* func, int r1, int r2) {
   }
 
   //clear args before next function call
-  fArgs.clear();
+  fArgs.fastClear();
 
   //start function at 0
   return 0;
@@ -192,17 +192,9 @@ void Interpreter::setVarAddress(int num1, int num2, int num3) {
   a3 = num3;
 }
 
-int Interpreter::calcOffset() {
-  if (addressIsLiteral) {
-    return a2;
-  } else if (a2 < 0) {
-    return 0;
-  } else {
-    return frames[frame].vars[a2];
-  }
-}
-
 int Interpreter::getLabelPos(int id) {
+  //TODO maybe use a sorted array?
+  //or flag set?
   for (int i = 0; i < labelIds.getCount(); i++) {
     if (labelIds[i] == id) {
       return labelLocations[i];
@@ -212,6 +204,7 @@ int Interpreter::getLabelPos(int id) {
 }
 
 void Interpreter::addLabel(int id, int pos, bool debug, bool verbose) {
+  //this runs on every label, so it's gonna be a little slow...
   if (getLabelPos(id) < 0) {
     if (verbose) {
       Serial.print("adding label: ");
@@ -241,7 +234,8 @@ int Interpreter::getJumpTarget(int id, int startPos, bool debug, bool verbose) {
     Serial.println(id);
   }
 
-  for (int i = 0; i < frames[frame].func->codeLen; i++) {
+  //we've definitely seen the prior areas
+  for (int i = startPos; i < frames[frame].func->codeLen; i++) {
     BytecodeInst* inst = frames[frame].func->code;
     if (inst[i].opCode == OpCodeI::LABEL && inst[i].num1 == id) {
       if (debug) {
@@ -274,16 +268,9 @@ int Interpreter::readFromAddress() {
     }
 
     if (ptr < stackRegCount) {
-      int i = ptr;
-      for (int j = frame; j >= 0; j--) {
-        int* sVars = frames[j].vars;
-        if (i < maxVar) {
-          return sVars[i];
-        } else {
-          i -= maxVar;
-        }
-      }
-      return 0;
+      int* sVars = frames[ptr / maxVar].vars;
+      int i = ptr % maxVar;
+      return sVars[i];
     } else {
       return frames[frame].vars[ptr - stackRegCount];
     }
@@ -336,16 +323,9 @@ void Interpreter::writeToAddress(int val) {
     }
 
     if (ptr < stackRegCount) {
-      int i = ptr;
-      for (int j = frame; j >= 0; j--) {
-        int* sVars = frames[j].vars;
-        if (i < maxVar) {
-          sVars[i] = val;
-          break;
-        } else {
-          i -= maxVar;
-        }
-      }
+      int* sVars = frames[ptr / maxVar].vars;
+      int i = ptr % maxVar;
+      sVars[i] = val;
     } else {
       frames[frame].vars[ptr - stackRegCount] = val;
     }
@@ -380,7 +360,7 @@ int Interpreter::getLocalAddress(int local) {
 }
 
 
-bool Interpreter::isBuiltinFunction(const char* func) {
+bool Interpreter::isBuiltinFunctionRaw(const char* func) {
   return !strcmp(func, "libc.malloc") || !strcmp(func, "libc.free");
 }
 
@@ -395,7 +375,7 @@ void Interpreter::callBuiltinFunction(const char* func, int r1, int r2) {
   }
 
   //clear args before next function call
-  fArgs.clear();
+  fArgs.fastClear();
   if (!strcmp(func, "libc.malloc")) {
     frames[frame].vars[r1] = heapAlloc(args[0]);
   } else if (!strcmp(func, "libc.free")) {
@@ -405,7 +385,8 @@ void Interpreter::callBuiltinFunction(const char* func, int r1, int r2) {
 }
 
 bool Interpreter::doStep(void (*print)(const char*), bool debug, bool verbose) {
-  if (frames[frame].ip < 0 || frames[frame].ip > frames[frame].func->codeLen) {
+  int i = frames[frame].ip;
+  if (!valid || i < 0 || i > frames[frame].func->codeLen) {
     frames[frame].ip = -1;
     return false;
   }
@@ -413,7 +394,7 @@ bool Interpreter::doStep(void (*print)(const char*), bool debug, bool verbose) {
     return false;
   }
 
-  int i = frames[frame].ip;
+  ///*
   int instPointer = i + 1;
 
   BytecodeInst* inst = frames[frame].func->code;
@@ -430,106 +411,108 @@ bool Interpreter::doStep(void (*print)(const char*), bool debug, bool verbose) {
   }
 
   int val;
+  BytecodeInst curInst = inst[i];
 
   //run instruction
-  switch (inst[i].opCode) {
+  switch (curInst.opCode) {
     case OpCodeI::ADD_INT:
-      vars[inst[i].num1] = vars[inst[i].num1] + vars[inst[i].num2];
+      vars[curInst.num1] = vars[curInst.num1] + vars[curInst.num2];
       break;
     case OpCodeI::MULT_INT:
-      vars[inst[i].num1] = vars[inst[i].num1] * vars[inst[i].num2];
+      vars[curInst.num1] = vars[curInst.num1] * vars[curInst.num2];
       break;
     case OpCodeI::NEGATE_INT:
-      vars[inst[i].num1] = -vars[inst[i].num1];
+      vars[curInst.num1] = -vars[curInst.num1];
       break;
     case OpCodeI::MOVE:
-      vars[inst[i].num1] = vars[inst[i].num2];
+      vars[curInst.num1] = vars[curInst.num2];
       break;
     case OpCodeI::ASSIGN_INT:
-      vars[inst[i].num1] = inst[i].num2;
+      vars[curInst.num1] = curInst.num2;
       break;
     case OpCodeI::ASSIGN_STR:
-      vars[inst[i].num1] = inst[i].num2;
+      vars[curInst.num1] = curInst.num2;
       break;
     case OpCodeI::ASSIGN_CHAR:
-      vars[inst[i].num1] = inst[i].num2;
+      vars[curInst.num1] = curInst.num2;
       break;
     case OpCodeI::BITWISE_XOR:
-      vars[inst[i].num1] = vars[inst[i].num1] ^ vars[inst[i].num2];
+      vars[curInst.num1] = vars[curInst.num1] ^ vars[curInst.num2];
       break;
     case OpCodeI::COMPARE_EQ:
       //equal to comparison
-      vars[inst[i].num3] = ToInt(vars[inst[i].num1] == vars[inst[i].num2]);
+      vars[curInst.num3] = ToInt(vars[curInst.num1] == vars[curInst.num2]);
       break;
     case OpCodeI::COMPARE_LESS:
       //less than comparison
-      vars[inst[i].num3] = ToInt(vars[inst[i].num1] < vars[inst[i].num2]);
+      vars[curInst.num3] = ToInt(vars[curInst.num1] < vars[curInst.num2]);
       break;
     case OpCodeI::COMPARE_LEQ:
       //less than or equal to comparison
-      vars[inst[i].num3] = ToInt(vars[inst[i].num1] <= vars[inst[i].num2]);
+      vars[curInst.num3] = ToInt(vars[curInst.num1] <= vars[curInst.num2]);
       break;
     case OpCodeI::NOT_BOOL:
       //negation
-      vars[inst[i].num1] = ToInt(vars[inst[i].num1] == 0);
+      vars[curInst.num1] = ToInt(vars[curInst.num1] == 0);
       break;
     case OpCodeI::OR_BOOL:
       //boolean or
-      vars[inst[i].num1] = ToInt(ToBool(vars[inst[i].num1]) || ToBool(vars[inst[i].num2]));
+      vars[curInst.num1] = ToInt(ToBool(vars[curInst.num1]) || ToBool(vars[curInst.num2]));
       break;
     case OpCodeI::AND_BOOL:
       //boolean and
-      vars[inst[i].num1] = ToInt(ToBool(vars[inst[i].num1]) && ToBool(vars[inst[i].num2]));
+      vars[curInst.num1] = ToInt(ToBool(vars[curInst.num1]) && ToBool(vars[curInst.num2]));
       break;
 
-      
+
     case OpCodeI::ADDR_OF:
-      vars[inst[i].num1] = getLocalAddress(inst[i].num2);
+      vars[curInst.num1] = getLocalAddress(curInst.num2);
       break;
     case OpCodeI::PTR_INC:
       //TODO throw error when doing this with non-heap variables
-      vars[inst[i].num1] += vars[inst[i].num2] * getSizeFor(inst[i].type);
+      vars[curInst.num1] += vars[curInst.num2] * getSizeFor(curInst.type);
       break;
     case OpCodeI::CALC_ADDR_CONST:
-      setConstAddress(inst[i].num1, inst[i].num2, inst[i].num3);
+      setConstAddress(curInst.num1, curInst.num2, curInst.num3);
       break;
     case OpCodeI::CALC_ADDR_VAR:
-      setVarAddress(inst[i].num1, inst[i].num2, inst[i].num3);
+      setVarAddress(curInst.num1, curInst.num2, curInst.num3);
       break;
     case OpCodeI::MOVE_TO:
-      val = vars[inst[i].num1];
+      val = vars[curInst.num1];
       writeToAddress(val);
       break;
     case OpCodeI::MOVE_FROM:
       val = readFromAddress();
-      vars[inst[i].num1] = val;
+      vars[curInst.num1] = val;
       break;
 
     case OpCodeI::FUNC_CALL:
       {
-        const char* name = program->getFuncTarget(inst[i].num1);
-        if (debug) {
-          Serial.print("going to call func: ");
-          Serial.println(name);
-        }
-        if (isBuiltinFunction(name)) {
-          callBuiltinFunction(name, inst[i].num2, inst[i].num3);
+        int id = curInst.num1;
+        if (isBuiltinFunction(id)) {
+          const char* name = program->getFuncTarget(id);
+          if (debug) {
+            Serial.print("going to call builtin func: ");
+            Serial.println(name);
+          }
+          callBuiltinFunction(name, curInst.num2, curInst.num3);
         } else {
-          BytecodeFunc* func = program->getFunc(name);
+          BytecodeFunc* func = program->getFuncDirect(id);
           if (debug) {
             Serial.print("func found: ");
             Serial.print((int)func, HEX);
             Serial.print('\t');
             Serial.println(func->name);
           }
-          instPointer = callFunction(func, inst[i].num2, inst[i].num3);
+          instPointer = callFunction(func, curInst.num2, curInst.num3);
         }
       }
       break;
     case OpCodeI::CALL_BUILTIN:
       {
         //TODO return values lol
-        int target = frames[frame].vars[inst[i].num1];
+        int target = frames[frame].vars[curInst.num1];
         BuiltinFunc& func = builtins[target];
         int* args = new int[fArgs.getCount()];
         for (int i = 0; i < fArgs.getCount(); i++) {
@@ -554,67 +537,72 @@ bool Interpreter::doStep(void (*print)(const char*), bool debug, bool verbose) {
           delay(100);
         }
         (*(func.ptr))(args);
-        fArgs.clear();
+        fArgs.fastClear();
         delete args;
       }
       break;
     case OpCodeI::FUNC_ARGS:
-      addArgs(inst[i].num1, inst[i].num2, inst[i].num3, debug, verbose);
+      addArgs(curInst.num1, curInst.num2, curInst.num3, debug, verbose);
       break;
     case OpCodeI::RETURN:
-      instPointer = returnFunction(inst[i].num1, inst[i].num2, debug, verbose);
+      instPointer = returnFunction(curInst.num1, curInst.num2, debug, verbose);
       break;
 
     case OpCodeI::LABEL:
-      addLabel(inst[i].num1, i, debug, verbose);
+      addLabel(curInst.num1, i, debug, verbose);
       break;
     case OpCodeI::JMP:
-      instPointer = getJumpTarget(inst[i].num1, i, debug, verbose);  //perform the jump
+      instPointer = getJumpTarget(curInst.num1, i, debug, verbose);  //perform the jump
       break;
     case OpCodeI::JMP_IF:
-      if (vars[inst[i].num2] != 0) {
-        instPointer = getJumpTarget(inst[i].num1, i, debug, verbose);  //perform the jump
+      if (vars[curInst.num2] != 0) {
+        instPointer = getJumpTarget(curInst.num1, i, debug, verbose);  //perform the jump
       }
       break;
     case OpCodeI::PRINT_STR_CONST:
-      (*print)(program->strings[inst[i].num1]);
+      (*print)(program->strings[curInst.num1]);
       break;
     case OpCodeI::PRINT_STR_VAR:
       //get the string pointer at pos
       //and print that string
-      (*print)(program->strings[vars[inst[i].num1]]);
+      (*print)(program->strings[vars[curInst.num1]]);
       break;
     case OpCodeI::PRINT_NUM:
-      (*print)(String(vars[inst[i].num1]).c_str());
+      {
+        itoa(vars[curInst.num1], strBuff, 10);
+        (*print)(strBuff);
+      }
       break;
     case OpCodeI::PRINT_ADDR:
-      (*print)(ToHex(vars[inst[i].num1]).c_str());
+      {
+        itoa(vars[curInst.num1], strBuff, 8);
+        (*print)(strBuff);
+      }
       break;
     case OpCodeI::PRINT_BOOL:
-      if (vars[inst[i].num1] == 0) {
+      if (vars[curInst.num1] == 0) {
         (*print)("false");
       } else {
         (*print)("true");
       }
       break;
     case OpCodeI::PRINT_CHAR:
-      (*print)(String(vars[inst[i].num1]).c_str());
+      {
+        strBuff[0] = (char)vars[curInst.num1];
+        strBuff[1] = 0;
+        (*print)(strBuff);
+      }
       break;
     default:
       (*print)("Invalid opcode: ");
-      (*print)(String((int)inst[i].opCode).c_str());
+      {
+        itoa(vars[(int)curInst.opCode], strBuff, 10);
+        (*print)(strBuff);
+      }
       return false;
   }
 
   frames[frame].ip = instPointer;
-
+  //*/
   return true;
-}
-
-bool Interpreter::step(void (*print)(const char*), bool debug, bool verbose) {
-  bool rslt = doStep(print, debug, verbose);
-  if (rslt == false) {
-    valid = false;
-  }
-  return rslt;
 }

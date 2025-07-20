@@ -228,6 +228,7 @@ public:
     program.funcTargets = funcTargets;
     program.stringsCount = stringsCount;
     program.strings = strings;
+    program.init();
 
     return true;
   }

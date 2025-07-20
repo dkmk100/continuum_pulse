@@ -61,6 +61,9 @@ public:
       size = smallSize;
     }
   }
+  void fastClear(){
+    count = 0;
+  }
 
   T& operator[](int index) {
     return dest()[index];

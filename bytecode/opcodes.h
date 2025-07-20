@@ -19,7 +19,7 @@ struct BytecodeInst {
   int num1;
   int num2;
   int num3;
-  BytecodeInst(){
+  BytecodeInst() {
     //will be in invalid state, oh well
   }
   BytecodeInst(OpCodeI opCode, PrimitiveType type, int num1 = -1, int num2 = -1, int num3 = -1) {
@@ -44,7 +44,7 @@ struct BytecodeFunc {
   int args;
   const char* name;
 
-  BytecodeFunc(){
+  BytecodeFunc() {
     //will be in invalid state, oops
   }
 
@@ -64,6 +64,7 @@ public:
   const char** funcTargets;
   int stringsCount;
   const char** strings;
+  BytecodeFunc** funcTargetsCache;
 
   bool dynamic;
 
@@ -81,24 +82,31 @@ public:
     this->dynamic = dynamic;
   }
 
-  inline void deleteRecursive(bool deleteText){
-    for(int i=0;i<funcsCount;i++){
+  inline void init() {
+    funcTargetsCache = new BytecodeFunc*[funcTargetsCount];
+    for (int i = 0; i < funcTargetsCount; i++) {
+      funcTargetsCache[i] = getFunc(getFuncTarget(i));
+    }
+  }
+
+  inline void deleteRecursive(bool deleteText) {
+    for (int i = 0; i < funcsCount; i++) {
       delete funcs[i].code;
-      if(deleteText){
+      if (deleteText) {
         delete funcs[i].name;
       }
     }
     delete funcs;
 
-    if(deleteText){
-      for(int i=0;i<funcTargetsCount;i++){
+    if (deleteText) {
+      for (int i = 0; i < funcTargetsCount; i++) {
         delete funcTargets[i];
       }
     }
     delete funcTargets;
 
-    if(deleteText){
-      for(int i=0;i<stringsCount;i++){
+    if (deleteText) {
+      for (int i = 0; i < stringsCount; i++) {
         delete strings[i];
       }
     }
@@ -110,6 +118,15 @@ public:
       return funcTargets[id];
     }
     return "";
+  }
+
+  inline BytecodeFunc* getFuncDirect(int id) const {
+    if (id < funcTargetsCount) {
+      return funcTargetsCache[id];
+    }
+    else{
+      return nullptr;
+    }
   }
 
   inline BytecodeFunc* getFunc(const char* name) const {
@@ -168,7 +185,8 @@ enum class OpCodeI : unsigned char {
   PTR_INC,
 
   //string data operations
-  STR_CHAR_PTR, STR_LEN, 
+  STR_CHAR_PTR,
+  STR_LEN,
 
   //function call for a builtin function
   CALL_BUILTIN

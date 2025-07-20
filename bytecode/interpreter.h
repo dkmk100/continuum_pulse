@@ -50,12 +50,27 @@ private:
   void resizeHeap(int newSize);
   void setConstAddress(int num1, int num2, int num3);
   void setVarAddress(int num1, int num2, int num3);
-  int calcOffset();
+
+  inline int calcOffset() {
+    if (addressIsLiteral) {
+      return a2;
+    } else if (a2 < 0) {
+      return 0;
+    } else {
+      return frames[frame].vars[a2];
+    }
+  }
+
+  bool* builtinCache = nullptr;
+
   int readFromAddress();
   void writeToAddress(int val);
   int getLocalAddress(int local);
-  bool isBuiltinFunction(const char* func);
+  bool isBuiltinFunctionRaw(const char* func);
   void callBuiltinFunction(const char* func, int r1, int r2);
+  inline bool isBuiltinFunction(int id) {
+    return builtinCache[id];
+  }
 
   int getJumpTarget(int id, int startPos, bool, bool);
   void addLabel(int id, int pos, bool, bool);
@@ -71,8 +86,11 @@ private:
   bool addressValid = false;
   bool addressIsLiteral = false;
   int a1, a2, a3;
-  
+
   bool valid = false;
+
+  int completedCount = 0;
+  char strBuff[16];
 
   bool doStep(void (*print)(const char*), bool debug, bool verbose);
 
@@ -87,9 +105,10 @@ public:
   ~Interpreter() {
     delete frames;
     delete heap;
+    delete builtinCache;
   }
 
-  inline bool ready(){
+  inline bool ready() {
     return valid && frames[frame].ip < frames[frame].func->codeLen;
   }
 
@@ -99,18 +118,35 @@ public:
     frames[0].func = program.entryPoint();
     this->program = &program;
     valid = true;
+    completedCount = 0;
+    builtinCache = new bool[program.funcTargetsCount];
+    for (int i = 0; i < program.funcTargetsCount; i++) {
+      builtinCache[i] = isBuiltinFunctionRaw(program.funcTargets[i]);
+    }
   }
 
-  inline void halt(){
+  inline void halt() {
     valid = false;
+    completedCount = 0;
   }
 
-  bool step(void (*print)(const char*), bool debug, bool verbose);
+  inline int getCompleted() {
+    return completedCount;
+  }
+  inline void resetCompleted() {
+    completedCount = 0;
+  }
+
+  inline bool step(void (*print)(const char*), bool debug, bool verbose) {
+    valid = doStep(print, debug, verbose);
+    completedCount += 1;
+    return valid;
+  }
 
   inline void run(const BytecodeProgram& program, void (*print)(const char*), bool debug, bool verbose) {
     begin(program);
     while (frames[frame].ip < frames[frame].func->codeLen) {
-      if(!step(print, debug, verbose)){
+      if (!step(print, debug, verbose)) {
         return;
       }
     }

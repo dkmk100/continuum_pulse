@@ -16,6 +16,7 @@
 
 #define LEFT_PIN 11
 #define RIGHT_PIN 13
+const bool profile = true;
 const bool debug = false;
 const bool verbose = false;
 
@@ -66,7 +67,7 @@ unsigned int freeMemory() {
 void printFreeMemory() {
   unsigned int bytes = freeMemory();
   Serial.print(bytes / (float)1024);
-  Serial.println("kb");
+  Serial.println("KB");
 }
 
 int leftButton(int* dat) {
@@ -352,20 +353,42 @@ void loop() {
     RunProgram(program);
   }
 
+  if (profile && (debug || verbose)) {
+    Serial.println("~~~warning: profiling will be inaccurate in debug mode!");
+  }
+
   if (interpreter.ready()) {
-    if (debug) {
-      Serial.println("begin interpreter brust");
+    if (debug || profile) {
+      Serial.println("~~~begin interpreter brust");
     }
     long startTime = millis();
-    long timeout = 1000;
-    while (millis() - timeout < startTime && millis() >= resumeTime && interpreter.ready()) {
-      interpreter.step(&print, debug, verbose);
+    long timeout = 10000;
+    long trueStart = micros();
+    int miniBurst = 100;
+    bool b = true;
+    while (millis() - timeout < startTime) {
+      for (int i = 0; i < miniBurst && startTime >= resumeTime && b; i++) {
+        b = interpreter.step(&print, debug, verbose);
+      }
     }
-    if (debug) {
+    if (debug || profile) {
+      long trueEnd = micros();
       if (interpreter.ready()) {
-        Serial.println("end interpreter burst");
+        Serial.println();
+        Serial.println("~~~end interpreter burst");
       } else {
-        Serial.println("interpreter halted!");
+        Serial.println();
+        Serial.println("~~~interpreter halted!");
+      }
+      if (profile) {
+        
+        long completed = interpreter.getCompleted();
+        interpreter.resetCompleted();
+        long elapsed = trueEnd - trueStart;
+        double perMillis = (completed * 1000.0) / elapsed;
+        Serial.println();
+        Serial.print("~~~Inst per millis: ");
+        Serial.println(perMillis);
       }
     }
   }

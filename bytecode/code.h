@@ -221,6 +221,7 @@ inline void CreateDefaultProgram(BytecodeProgram& program) {
   program = {
     funcsCount, funcs, funcTargetsCount, funcTargets, stringsCount, strings, false
   };
+  program.init();
 }
 
 #endif
